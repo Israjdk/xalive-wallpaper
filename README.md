@@ -58,7 +58,7 @@ Install it for your user (no root, no terminal needed afterwards):
 ./install.sh --remove   # uninstalls (settings are kept)
 ```
 
-In **Ajustes**, turn on **Iniciar con la sesión** to start it with XFCE
+In **Settings**, turn on **Initial session** to start it with XFCE
 (an XDG autostart entry, no extra tools) and **Recordar el último fondo al
 abrir** to re-apply the last wallpaper, fit and audio choice automatically.
 When started by the session it stays hidden and waits for xfdesktop and the
