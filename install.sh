@@ -22,18 +22,18 @@ fi
 SRC="$(cd "$(dirname "$0")" && pwd)"
 
 missing=""
-for tool in mpv wmctrl xprop xfconf-query python3; do
+for tool in mpv wmctrl xfconf-query python3; do
     command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
 done
 python3 -c 'import gi; gi.require_version("Gtk", "3.0")' 2>/dev/null || missing="$missing python3-gi"
 if [ -n "$missing" ]; then
     echo "Missing:$missing"
-    echo "On Linux Mint: sudo apt install mpv python3-gi gir1.2-gtk-3.0 wmctrl x11-utils xfconf"
+    echo "On Linux Mint: sudo apt install mpv python3-gi gir1.2-gtk-3.0 wmctrl xfconf"
     exit 1
 fi
 
 mkdir -p "$APP_DIR" "$(dirname "$BIN")" "$(dirname "$MENU")"
-cp "$SRC/xalive.py" "$SRC/xalive_sources.py" "$SRC/xalive_i18n.py" "$APP_DIR/"
+cp "$SRC/xalive.py" "$SRC/xalive_sources.py" "$SRC/xalive_i18n.py" "$SRC/xalive_x11.py" "$APP_DIR/"
 
 cat > "$BIN" <<EOF
 #!/bin/sh

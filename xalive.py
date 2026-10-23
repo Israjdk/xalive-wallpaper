@@ -20,6 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import xalive_sources as sources  # noqa: E402
 from xalive_i18n import tr  # noqa: E402
+from xalive_x11 import XProps  # noqa: E402
 
 
 ICON_SIZE_MIN = 24
@@ -1080,8 +1081,7 @@ class WallpaperController:
         self.activity_timer_id = None
         self.pause_on_activity = True
         self.paused = False
-        self.blocking_window = None
-        self.activity_interval = 1000
+        self.x11 = None
         self.sockets = []
         self.socket_dir = None
         self.exceptions = []
@@ -1275,11 +1275,13 @@ class WallpaperController:
             self.active_video = video
             self.last_start = (video, fit, audio, preferences)
             self.layout = self.layout_signature()
+            if self.x11 is None:
+                try:
+                    self.x11 = XProps()
+                except OSError as error:
+                    print(f"Pause on activity unavailable: {error}", file=sys.stderr)
             self.timer_id = self.GLib.timeout_add_seconds(2, self.check_players)
-            self.activity_interval = 1000
-            self.activity_timer_id = self.GLib.timeout_add(
-                self.activity_interval, self.check_activity
-            )
+            self.activity_timer_id = self.GLib.timeout_add(250, self.check_activity)
         except (OSError, RuntimeError):
             self.stop()
             raise
@@ -1310,88 +1312,52 @@ class WallpaperController:
         if not enabled:
             self.set_paused(False)
 
-    @staticmethod
-    def xprop(*args):
-        try:
-            result = subprocess.run(
-                ["xprop", *args], capture_output=True, text=True, timeout=2
-            )
-        except (OSError, subprocess.SubprocessError):
-            return ""
-        return result.stdout if result.returncode == 0 else ""
-
     def window_blocks_wallpaper(self, xid, desktop):
         # A visible fullscreen or maximized window of a non-excepted application blocks the video.
         if xid in self.ignored_windows:
             return False
-        output = self.xprop(
-            "-id",
-            xid,
-            "_NET_WM_STATE",
-            "_NET_WM_DESKTOP",
-            "_NET_WM_PID",
-            "WM_CLASS",
-            "_NET_WM_WINDOW_TYPE",
-        )
-        if not output:
-            return False
+        props = self.x11
+        types = props.get(xid, "_NET_WM_WINDOW_TYPE", "atom")
+        pids = props.get(xid, "_NET_WM_PID")
         # Panels, the desktop and our own windows can never cover the video: skip them for good.
-        match = re.search(r"_NET_WM_PID\(CARDINAL\) = (\d+)", output)
-        if (
-            (match and int(match.group(1)) == os.getpid())
-            or "_NET_WM_WINDOW_TYPE_DOCK" in output
-            or "_NET_WM_WINDOW_TYPE_DESKTOP" in output
+        if (pids and pids[0] == os.getpid()) or (
+            "_NET_WM_WINDOW_TYPE_DOCK" in types or "_NET_WM_WINDOW_TYPE_DESKTOP" in types
         ):
             self.ignored_windows.add(xid)
             return False
-        covers_screen = "_NET_WM_STATE_FULLSCREEN" in output or (
-            "_NET_WM_STATE_MAXIMIZED_HORZ" in output
-            and "_NET_WM_STATE_MAXIMIZED_VERT" in output
+        state = props.get(xid, "_NET_WM_STATE", "atom")
+        covers_screen = "_NET_WM_STATE_FULLSCREEN" in state or (
+            "_NET_WM_STATE_MAXIMIZED_HORZ" in state
+            and "_NET_WM_STATE_MAXIMIZED_VERT" in state
         )
-        if not covers_screen or "_NET_WM_STATE_HIDDEN" in output:
+        if not covers_screen or "_NET_WM_STATE_HIDDEN" in state:
             return False
-        match = re.search(r"_NET_WM_DESKTOP\(CARDINAL\) = (\d+)", output)
-        if match and desktop is not None and int(match.group(1)) not in (desktop, 0xFFFFFFFF):
+        window_desktop = props.get(xid, "_NET_WM_DESKTOP")
+        if (
+            window_desktop
+            and desktop is not None
+            and window_desktop[0] not in (desktop, 0xFFFFFFFF)
+        ):
             return False
-        class_line = next(
-            (line for line in output.splitlines() if line.startswith("WM_CLASS")), ""
-        )
-        classes = {name.casefold() for name in re.findall(r'"([^"]*)"', class_line)}
+        classes = {name.casefold() for name in props.get(xid, "WM_CLASS")}
         excepted = {name.casefold() for name in self.exceptions}
         return not (classes & excepted)
 
     def check_activity(self):
         if not self.running:
             return self.GLib.SOURCE_REMOVE
-        if not self.pause_on_activity:
+        if not self.pause_on_activity or self.x11 is None:
             return self.GLib.SOURCE_CONTINUE
-        root = self.xprop("-root", "_NET_CLIENT_LIST_STACKING", "_NET_CURRENT_DESKTOP")
-        stacking = next(
-            (line for line in root.splitlines() if line.startswith("_NET_CLIENT_LIST_STACKING")),
-            "",
-        )
-        match = re.search(r"_NET_CURRENT_DESKTOP\(CARDINAL\) = (\d+)", root)
-        desktop = int(match.group(1)) if match else None
-        windows = re.findall(r"0x[0-9a-fA-F]+", stacking)
+        props = self.x11
+        windows = props.get(props.root, "_NET_CLIENT_LIST_STACKING")
+        current = props.get(props.root, "_NET_CURRENT_DESKTOP")
+        desktop = current[0] if current else None
         self.ignored_windows.intersection_update(windows)
-        candidates = list(reversed(windows[-6:]))
-        # While paused, recheck the blocking window first so resuming is quick and cheap.
-        blocker = self.blocking_window
-        if blocker in candidates:
-            candidates.remove(blocker)
-            candidates.insert(0, blocker)
-        self.blocking_window = None
-        for xid in candidates:
-            if self.window_blocks_wallpaper(xid, desktop):
-                self.blocking_window = xid
-                break
-        self.set_paused(self.blocking_window is not None)
-        # Poll fast only while paused: that is when resume latency is noticeable.
-        interval = 250 if self.paused else 1000
-        if interval != self.activity_interval:
-            self.activity_interval = interval
-            self.activity_timer_id = self.GLib.timeout_add(interval, self.check_activity)
-            return self.GLib.SOURCE_REMOVE
+        # Inspect only the few topmost windows; each lookup is an in-process X request.
+        blocked = any(
+            self.window_blocks_wallpaper(xid, desktop) for xid in reversed(windows[-6:])
+        )
+        self.set_paused(blocked)
         return self.GLib.SOURCE_CONTINUE
 
     def on_wallpaper_delete(self, *_args):
