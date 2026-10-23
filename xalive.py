@@ -130,6 +130,7 @@ class WallpaperPreferences:
                 print(f"Could not migrate old settings: {error}", file=sys.stderr)
         self.data = {
             "icon_size": 48,
+            "show_icons": True,
             "icon_positions": {},
             "pause_on_activity": True,
             "pause_exceptions": [],
@@ -163,7 +164,7 @@ class WallpaperPreferences:
                 self.data["last_video"] = saved["last_video"]
             if saved.get("last_fit") in ("cover", "contain"):
                 self.data["last_fit"] = saved["last_fit"]
-            for key in ("restore_last", "last_audio"):
+            for key in ("restore_last", "last_audio", "show_icons"):
                 if isinstance(saved.get(key), bool):
                     self.data[key] = saved[key]
             modes = saved.get("monitor_modes")
@@ -1158,7 +1159,7 @@ class WallpaperController:
             if not self.windows:
                 raise RuntimeError("No se encontraron monitores.")
 
-            if XfceIconLayer.available():
+            if preferences.data["show_icons"] and XfceIconLayer.available():
                 desktop_window = XfceIconLayer.find_xfdesktop_window(
                     self.display,
                     self.GdkX11,
@@ -1320,6 +1321,8 @@ class WallpaperController:
     def watch_desktop(self):
         if self.restarting or self.last_start is None or shutil.which("xfconf-query") is None:
             return
+        if not self.last_start[3].data["show_icons"]:
+            return
         alive = XfceIconLayer.xfdesktop_is_running()
         if not alive:
             XfceIconLayer.ensure_xfdesktop()
@@ -1468,7 +1471,13 @@ class WallpaperApp:
         pause_label.set_xalign(0)
         options.attach(pause_label, 0, 2, 1, 1)
         options.attach(self.pause_switch, 1, 2, 1, 1)
-        options.attach(Gtk.Label(label="Tamaño de los iconos"), 0, 3, 1, 1)
+        self.icons_switch = Gtk.Switch()
+        self.icons_switch.set_halign(Gtk.Align.START)
+        self.icons_switch.set_active(preferences.data["show_icons"])
+        self.icons_switch.connect("notify::active", self.on_icons_switch_changed)
+        options.attach(Gtk.Label(label="Mostrar iconos del escritorio", xalign=0), 0, 3, 1, 1)
+        options.attach(self.icons_switch, 1, 3, 1, 1)
+        options.attach(Gtk.Label(label="Tamaño de los iconos"), 0, 4, 1, 1)
         size_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self.icon_size_scale = Gtk.Scale.new_with_range(
             Gtk.Orientation.HORIZONTAL,
@@ -1495,19 +1504,21 @@ class WallpaperApp:
             0,
         )
         size_box.pack_start(range_labels, False, False, 0)
-        options.attach(size_box, 1, 3, 1, 1)
+        options.attach(size_box, 1, 4, 1, 1)
+        size_box.set_sensitive(preferences.data["show_icons"])
+        self.icon_size_box = size_box
         self.restore_switch = Gtk.Switch()
         self.restore_switch.set_halign(Gtk.Align.START)
         self.restore_switch.set_active(preferences.data["restore_last"])
         self.restore_switch.connect("notify::active", self.on_restore_switch_changed)
-        options.attach(Gtk.Label(label="Recordar el último fondo al abrir", xalign=0), 0, 4, 1, 1)
-        options.attach(self.restore_switch, 1, 4, 1, 1)
+        options.attach(Gtk.Label(label="Recordar el último fondo al abrir", xalign=0), 0, 5, 1, 1)
+        options.attach(self.restore_switch, 1, 5, 1, 1)
         self.autostart_switch = Gtk.Switch()
         self.autostart_switch.set_halign(Gtk.Align.START)
         self.autostart_switch.set_active(autostart_enabled())
         self.autostart_switch.connect("notify::active", self.on_autostart_switch_changed)
-        options.attach(Gtk.Label(label="Iniciar con la sesión", xalign=0), 0, 5, 1, 1)
-        options.attach(self.autostart_switch, 1, 5, 1, 1)
+        options.attach(Gtk.Label(label="Iniciar con la sesión", xalign=0), 0, 6, 1, 1)
+        options.attach(self.autostart_switch, 1, 6, 1, 1)
         settings_box.pack_start(options_frame, False, False, 0)
 
         monitors_frame = Gtk.Frame(label=" Monitores ")
@@ -2543,6 +2554,14 @@ class WallpaperApp:
         self.preferences.data["pause_on_activity"] = enabled
         self.preferences.save()
         self.controller.set_pause_on_activity(enabled)
+
+    def on_icons_switch_changed(self, switch, _param):
+        enabled = switch.get_active()
+        self.preferences.data["show_icons"] = enabled
+        self.preferences.save()
+        self.icon_size_box.set_sensitive(enabled)
+        if self.controller.running:
+            self.controller.restart()
 
     def on_restore_switch_changed(self, switch, _param):
         self.preferences.data["restore_last"] = switch.get_active()

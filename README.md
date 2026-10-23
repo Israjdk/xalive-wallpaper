@@ -81,6 +81,8 @@ Choose a video, select how it fits the screen, and optionally enable audio.
 Click **Apply wallpaper** to start playback or **Stop wallpaper** to restore
 the desktop. Closing the control window also stops playback. The icon-size
 slider ranges from 24 to 128 pixels and updates the desktop icons immediately.
+The "Mostrar iconos del escritorio" switch turns the icon layer off if you
+prefer a clean wallpaper; it takes effect immediately.
 The **Download** tab has two views:
 
 - **Explore** is a native gallery (thumbnail, title, resolution) for MoeWalls,
