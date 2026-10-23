@@ -39,9 +39,15 @@ Without hardware decoding the load is much higher, so make sure your VAAPI
 driver works (`vainfo`). When another application is maximized, playback pauses
 and the CPU use drops to almost zero.
 
-This is an early prototype. Desktop window stacking differs between window
-managers, so the result needs testing on the target desktop; XFCE is the first
-target.
+## Compatibility
+
+Xalive is plain Python (GTK 3 + mpv) running on X11, so it should work on
+practically any Linux distribution: you only need to install the dependencies
+with your distribution's package manager (see [Requirements](#requirements)).
+
+It has only been tested on **Linux Mint XFCE (X11)**. Other X11 desktops have
+not been tested, and window stacking differs between window managers, so the
+result may vary there. Wayland is not supported.
 
 ## Requirements
 
@@ -50,6 +56,17 @@ On Linux Mint, install the system packages:
 ```sh
 sudo apt install mpv python3-gi gir1.2-gtk-3.0 wmctrl
 ```
+
+On other distributions install the equivalent packages (mpv, PyGObject, GTK 3
+introspection data, wmctrl, xrandr and xfconf), for example:
+
+```sh
+sudo dnf install mpv python3-gobject gtk3 wmctrl xrandr xfconf   # Fedora
+sudo pacman -S mpv python-gobject gtk3 wmctrl xorg-xrandr xfconf # Arch
+```
+
+The package names above come from each distribution's repositories but have
+not been tested here.
 
 Install it for your user (no root, no terminal needed afterwards):
 
