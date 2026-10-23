@@ -262,7 +262,7 @@ can pick one in Settings → Language. The change applies after restarting the a
 - The replacement icon layer covers the X11 screen; icon positions snap to a
   size-dependent grid.
 - Window-minimize icons and removable-device icons are not included. Right-clicking
-  the desktop offers a reduced menu: create folder/document, open terminal here,
+  the desktop offers a reduced menu: create folder/document, open terminal,
   display settings, desktop settings, refresh.
 - The graphical interface provides video selection, fit mode, audio, icon size,
   and start/stop controls; it does not yet include a video preview or playlist.

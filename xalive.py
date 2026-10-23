@@ -725,7 +725,7 @@ class XfceIconLayer:
         add("Crear carpeta", lambda: self.create_entry(True))
         add("Crear documento vacío", lambda: self.create_entry(False))
         menu.append(self.Gtk.SeparatorMenuItem())
-        add("Abrir terminal aquí", self.open_terminal_here)
+        add("Abrir terminal", self.open_terminal)
         add("Configuración de pantalla", lambda: self.spawn_tool(["xfce4-display-settings"]))
         add("Ajustes del escritorio", lambda: self.spawn_tool(["xfdesktop-settings"]))
         menu.append(self.Gtk.SeparatorMenuItem())
@@ -748,10 +748,10 @@ class XfceIconLayer:
         except OSError as error:
             self.show_error_dialog(f"{command[0]}: {error}")
 
-    def open_terminal_here(self):
+    def open_terminal(self):
         for terminal in ("xfce4-terminal", "x-terminal-emulator", "gnome-terminal"):
             if shutil.which(terminal):
-                self.spawn_tool([terminal], cwd=str(self.desktop_path))
+                self.spawn_tool([terminal], cwd=str(Path.home()))
                 return
         self.show_error_dialog(tr("No se encontró un emulador de terminal."))
 

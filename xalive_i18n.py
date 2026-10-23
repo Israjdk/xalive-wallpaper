@@ -10,7 +10,7 @@ LANGUAGES = ("auto", "es", "en")
 EN = {
     "Crear carpeta": "Create folder",
     "Crear documento vacío": "Create empty document",
-    "Abrir terminal aquí": "Open terminal here",
+    "Abrir terminal": "Open terminal",
     "Configuración de pantalla": "Display settings",
     "Ajustes del escritorio": "Desktop settings",
     "Actualizar iconos": "Refresh icons",
