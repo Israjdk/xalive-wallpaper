@@ -1080,6 +1080,8 @@ class WallpaperController:
         self.activity_timer_id = None
         self.pause_on_activity = True
         self.paused = False
+        self.blocking_window = None
+        self.activity_interval = 1000
         self.sockets = []
         self.socket_dir = None
         self.exceptions = []
@@ -1274,7 +1276,10 @@ class WallpaperController:
             self.last_start = (video, fit, audio, preferences)
             self.layout = self.layout_signature()
             self.timer_id = self.GLib.timeout_add_seconds(2, self.check_players)
-            self.activity_timer_id = self.GLib.timeout_add_seconds(1, self.check_activity)
+            self.activity_interval = 1000
+            self.activity_timer_id = self.GLib.timeout_add(
+                self.activity_interval, self.check_activity
+            )
         except (OSError, RuntimeError):
             self.stop()
             raise
@@ -1304,8 +1309,6 @@ class WallpaperController:
         self.pause_on_activity = enabled
         if not enabled:
             self.set_paused(False)
-        else:
-            self.check_activity()
 
     @staticmethod
     def xprop(*args):
@@ -1371,13 +1374,24 @@ class WallpaperController:
         desktop = int(match.group(1)) if match else None
         windows = re.findall(r"0x[0-9a-fA-F]+", stacking)
         self.ignored_windows.intersection_update(windows)
-        blocked = False
-        # Inspect only the few topmost windows to keep this check cheap.
-        for xid in reversed(windows[-6:]):
+        candidates = list(reversed(windows[-6:]))
+        # While paused, recheck the blocking window first so resuming is quick and cheap.
+        blocker = self.blocking_window
+        if blocker in candidates:
+            candidates.remove(blocker)
+            candidates.insert(0, blocker)
+        self.blocking_window = None
+        for xid in candidates:
             if self.window_blocks_wallpaper(xid, desktop):
-                blocked = True
+                self.blocking_window = xid
                 break
-        self.set_paused(blocked)
+        self.set_paused(self.blocking_window is not None)
+        # Poll fast only while paused: that is when resume latency is noticeable.
+        interval = 250 if self.paused else 1000
+        if interval != self.activity_interval:
+            self.activity_interval = interval
+            self.activity_timer_id = self.GLib.timeout_add(interval, self.check_activity)
+            return self.GLib.SOURCE_REMOVE
         return self.GLib.SOURCE_CONTINUE
 
     def on_wallpaper_delete(self, *_args):
