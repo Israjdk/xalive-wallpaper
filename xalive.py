@@ -712,6 +712,85 @@ class XfceIconLayer:
         menu.popup_at_pointer(event)
         return True
 
+    def on_background_button_press(self, _widget, event):
+        if event.button != 3 or event.type != self.Gdk.EventType.BUTTON_PRESS:
+            return False
+        menu = self.Gtk.Menu()
+
+        def add(label, callback):
+            item = self.Gtk.MenuItem(label=tr(label))
+            item.connect("activate", lambda *_: callback())
+            menu.append(item)
+
+        add("Crear carpeta", lambda: self.create_entry(True))
+        add("Crear documento vacío", lambda: self.create_entry(False))
+        menu.append(self.Gtk.SeparatorMenuItem())
+        add("Abrir terminal aquí", self.open_terminal_here)
+        add("Configuración de pantalla", lambda: self.spawn_tool(["xfce4-display-settings"]))
+        add("Ajustes del escritorio", lambda: self.spawn_tool(["xfdesktop-settings"]))
+        menu.append(self.Gtk.SeparatorMenuItem())
+        add("Actualizar iconos", self.refresh)
+        add("Abrir carpeta Escritorio", lambda: self.launch_path(self.desktop_path))
+        menu.show_all()
+        menu.popup_at_pointer(event)
+        return True
+
+    def spawn_tool(self, command, cwd=None):
+        try:
+            subprocess.Popen(
+                command,
+                cwd=cwd,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except OSError as error:
+            self.show_error_dialog(f"{command[0]}: {error}")
+
+    def open_terminal_here(self):
+        for terminal in ("xfce4-terminal", "x-terminal-emulator", "gnome-terminal"):
+            if shutil.which(terminal):
+                self.spawn_tool([terminal], cwd=str(self.desktop_path))
+                return
+        self.show_error_dialog(tr("No se encontró un emulador de terminal."))
+
+    def create_entry(self, folder):
+        Gtk = self.Gtk
+        base = tr("Carpeta nueva") if folder else tr("Documento nuevo")
+        dialog = Gtk.Dialog(title=tr("Crear carpeta") if folder else tr("Crear documento vacío"))
+        dialog.add_button(tr("Cancelar"), Gtk.ResponseType.CANCEL)
+        dialog.add_button(tr("Crear"), Gtk.ResponseType.OK)
+        dialog.set_default_response(Gtk.ResponseType.OK)
+        dialog.set_keep_above(True)
+        dialog.set_position(Gtk.WindowPosition.CENTER)
+        entry = Gtk.Entry(text=base if folder else base + ".txt")
+        entry.set_activates_default(True)
+        entry.set_width_chars(36)
+        box = dialog.get_content_area()
+        box.set_border_width(12)
+        box.add(entry)
+        dialog.show_all()
+        entry.select_region(0, len(base))
+        response = dialog.run()
+        name = entry.get_text().strip()
+        dialog.destroy()
+        if response != Gtk.ResponseType.OK or not name:
+            return
+        if "/" in name:
+            self.show_error_dialog(tr("El nombre no puede contener '/'."))
+            return
+        target = self.desktop_path / name
+        try:
+            if folder:
+                target.mkdir()
+            else:
+                target.touch(exist_ok=False)
+        except OSError as error:
+            self.show_error_dialog(str(error))
+            return
+        self.refresh()
+
     def position_for_path(self, path, index):
         saved = self.icon_positions.get(str(path))
         if saved is not None:
@@ -924,6 +1003,8 @@ class XfceIconLayer:
         self.window.set_default_size(self.screen_width, self.screen_height)
         self.window.move(0, 0)
         self.window.connect("delete-event", self.on_delete)
+        self.window.add_events(self.Gdk.EventMask.BUTTON_PRESS_MASK)
+        self.window.connect("button-press-event", self.on_background_button_press)
 
         self.window.get_style_context().add_class("live-wallpaper-icons")
         self.window.get_style_context().add_provider(

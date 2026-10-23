@@ -8,6 +8,19 @@ from pathlib import Path
 LANGUAGES = ("auto", "es", "en")
 
 EN = {
+    "Crear carpeta": "Create folder",
+    "Crear documento vacío": "Create empty document",
+    "Abrir terminal aquí": "Open terminal here",
+    "Configuración de pantalla": "Display settings",
+    "Ajustes del escritorio": "Desktop settings",
+    "Actualizar iconos": "Refresh icons",
+    "Abrir carpeta Escritorio": "Open Desktop folder",
+    "No se encontró un emulador de terminal.": "No terminal emulator was found.",
+    "Carpeta nueva": "New folder",
+    "Documento nuevo": "New document",
+    "Cancelar": "Cancel",
+    "Crear": "Create",
+    "El nombre no puede contener '/'.": "The name cannot contain '/'.",
     "Explorar": "Browse",
     "Sitios…": "Sites…",
     "Navegador": "Browser",
