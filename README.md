@@ -4,6 +4,13 @@ A small, native Linux live-wallpaper app for X11 desktops such as XFCE.
 It uses GTK 3 to create windows stacked just above the desktop and embeds
 [mpv](https://mpv.io/) for video playback. It does not require Flatpak.
 
+> **Note:** this project was made with AI assistance (GitHub Copilot). It
+> started as a personal experiment: I didn't want to use Hidamari or other
+> existing programs, so I asked an AI to build one. It is provided as-is and may
+> contain bugs. If you find one, feel free to fix it: the whole app lives in
+> [`xalive.py`](xalive.py) (the wallpaper catalogs are in `xalive_sources.py`),
+> and pull requests are welcome.
+
 This is an early prototype. Desktop window stacking differs between window
 managers, so the result needs testing on the target desktop; XFCE is the first
 target.
