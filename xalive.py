@@ -355,6 +355,25 @@ class XfceIconLayer:
                 continue
         return False
 
+    @staticmethod
+    def ensure_xfdesktop():
+        """Relaunch xfdesktop if it crashed (it can segfault when the screen layout changes)."""
+        if XfceIconLayer.xfdesktop_is_running():
+            return
+        executable = shutil.which("xfdesktop")
+        if executable is None:
+            return
+        try:
+            subprocess.Popen(
+                [executable],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except OSError as error:
+            print(f"Could not restart xfdesktop: {error}", file=sys.stderr)
+
     @classmethod
     def available(cls):
         return shutil.which("xfconf-query") is not None and cls.xfdesktop_is_running()
@@ -1026,6 +1045,7 @@ class WallpaperController:
             self.start(video, fit, audio, self.icon_size, preferences)
         except (OSError, RuntimeError) as error:
             # xfdesktop rebuilds its window a moment after a resolution change.
+            XfceIconLayer.ensure_xfdesktop()
             if attempts > 1:
                 self.restart_timer_id = self.GLib.timeout_add_seconds(
                     1, self.retry_restart, attempts - 1
@@ -1294,7 +1314,19 @@ class WallpaperController:
                 if self.on_error is not None:
                     self.on_error(message)
                 return self.GLib.SOURCE_REMOVE
+        self.watch_desktop()
         return self.GLib.SOURCE_CONTINUE
+
+    def watch_desktop(self):
+        if self.restarting or self.last_start is None or shutil.which("xfconf-query") is None:
+            return
+        alive = XfceIconLayer.xfdesktop_is_running()
+        if not alive:
+            XfceIconLayer.ensure_xfdesktop()
+            return
+        if self.icon_layer is None:
+            # xfdesktop came back (or started late): rebuild so the icon layer appears.
+            self.restart()
 
     def stop(self):
         if self.restart_timer_id is not None and not self.restarting:
@@ -1332,6 +1364,8 @@ class WallpaperController:
                 self.icon_layer.window.destroy()
             self.icon_layer.restore_native_icons()
             self.icon_layer = None
+            if not self.restarting:
+                XfceIconLayer.ensure_xfdesktop()
         self.active_video = None
 
         if was_running and self.on_stopped is not None and not self.restarting:
