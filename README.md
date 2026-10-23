@@ -86,6 +86,15 @@ are sized to fit the longest name and occupied cells are skipped. Their size and
 `~/.config/xalive/settings.json` (or `$XDG_CONFIG_HOME` when set; settings from the
 old `livewallpaper` folder are copied on first run).
 
+The wallpaper adapts on its own to each monitor: if the screen resolution
+changes or a monitor is plugged in or removed, the video and icon layer are
+rebuilt to match. Mirrored monitors share a single player. The **Monitores**
+section of the Settings tab lists every connected monitor with its available
+resolutions (`xrandr` modes); choosing one applies it with a 10-second
+confirmation that reverts automatically, and is restored on the next start.
+"Automática" leaves the resolution to the system. A lower resolution also
+reduces GPU load.
+
 The command-line mode is still available by passing a video path:
 
 ```sh

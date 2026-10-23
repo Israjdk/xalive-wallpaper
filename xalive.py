@@ -44,6 +44,77 @@ VIDEO_EXTENSIONS = {
 }
 
 
+MODE_PATTERN = re.compile(r"\d{3,5}x\d{3,5}(?:_\d+(?:\.\d+)?)?")
+OUTPUT_PATTERN = re.compile(
+    r"^(\S+) (connected|disconnected)(?: primary)?(?: (\d+)x(\d+)\+(-?\d+)\+(-?\d+))?"
+)
+
+
+def query_outputs():
+    """Connected monitors from xrandr: name, current mode, position and available modes."""
+    try:
+        result = subprocess.run(
+            ["xrandr", "--query"], capture_output=True, text=True, timeout=5
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    outputs = []
+    current = None
+    for line in result.stdout.splitlines():
+        if line[:1].isspace():
+            if current is None:
+                continue
+            parts = line.split()
+            if parts and MODE_PATTERN.fullmatch(parts[0]):
+                if parts[0] not in current["modes"]:
+                    current["modes"].append(parts[0])
+                if any("*" in rate for rate in parts[1:]):
+                    current["mode"] = parts[0]
+                if any("+" in rate for rate in parts[1:]):
+                    current["preferred"] = parts[0]
+            continue
+        match = OUTPUT_PATTERN.match(line)
+        if match is None or match.group(2) != "connected":
+            current = None
+            continue
+        current = {
+            "name": match.group(1),
+            "mode": None,
+            "preferred": None,
+            "modes": [],
+            "geometry": tuple(int(v) for v in match.group(3, 4, 5, 6))
+            if match.group(3)
+            else None,
+        }
+        outputs.append(current)
+    for output in outputs:
+        if output["mode"] is None and output["geometry"] is not None:
+            output["mode"] = f"{output['geometry'][0]}x{output['geometry'][1]}"
+    return outputs
+
+
+def set_output_mode(name, mode):
+    try:
+        result = subprocess.run(
+            ["xrandr", "--output", name, "--mode", mode],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return False, str(error)
+    return result.returncode == 0, result.stderr.strip()
+
+
+def apply_saved_modes(preferences):
+    for output in query_outputs():
+        mode = preferences.data["monitor_modes"].get(output["name"])
+        if mode and mode in output["modes"] and mode != output["mode"]:
+            ok, message = set_output_mode(output["name"], mode)
+            if not ok:
+                print(f"Could not set {output['name']} to {mode}: {message}", file=sys.stderr)
+
+
 class WallpaperPreferences:
     def __init__(self):
         config_home = Path(
@@ -67,6 +138,7 @@ class WallpaperPreferences:
             "last_video": "",
             "last_fit": "cover",
             "last_audio": False,
+            "monitor_modes": {},
         }
         try:
             saved = json.loads(self.path.read_text(encoding="utf-8"))
@@ -93,6 +165,15 @@ class WallpaperPreferences:
             for key in ("restore_last", "last_audio"):
                 if isinstance(saved.get(key), bool):
                     self.data[key] = saved[key]
+            modes = saved.get("monitor_modes")
+            if isinstance(modes, dict):
+                self.data["monitor_modes"] = {
+                    name: mode
+                    for name, mode in modes.items()
+                    if isinstance(name, str)
+                    and isinstance(mode, str)
+                    and MODE_PATTERN.fullmatch(mode)
+                }
             if isinstance(saved.get("pause_on_activity"), bool):
                 self.data["pause_on_activity"] = saved["pause_on_activity"]
             if isinstance(size, int) and ICON_SIZE_MIN <= size <= ICON_SIZE_MAX:
@@ -894,12 +975,77 @@ class WallpaperController:
         self.icon_size = 48
         self.on_stopped = None
         self.on_error = None
+        self.on_layout_changed = None
+        self.last_start = None
+        self.layout = None
+        self.layout_timer_id = None
+        self.restarting = False
+        self.restart_timer_id = None
+        screen = Gdk.Screen.get_default()
+        screen.connect("size-changed", self.on_screen_changed)
+        screen.connect("monitors-changed", self.on_screen_changed)
+
+    def layout_signature(self):
+        monitors = []
+        for index in range(self.display.get_n_monitors()):
+            geometry = self.display.get_monitor(index).get_geometry()
+            monitors.append((geometry.x, geometry.y, geometry.width, geometry.height))
+        return tuple(sorted(set(monitors)))
+
+    def on_screen_changed(self, *_args):
+        if self.layout_timer_id is not None:
+            self.GLib.source_remove(self.layout_timer_id)
+        # xrandr emits several signals per change; wait for them to settle.
+        self.layout_timer_id = self.GLib.timeout_add(800, self.apply_layout_change)
+
+    def apply_layout_change(self):
+        self.layout_timer_id = None
+        if self.on_layout_changed is not None:
+            self.on_layout_changed()
+        if self.running and self.last_start is not None:
+            if self.layout_signature() != self.layout:
+                self.restart()
+        return self.GLib.SOURCE_REMOVE
+
+    def restart(self, attempts=12):
+        self.restarting = True
+        self.stop()
+        self.try_restart(attempts)
+
+    def try_restart(self, attempts):
+        video, fit, audio, preferences = self.last_start
+        try:
+            self.start(video, fit, audio, self.icon_size, preferences)
+        except (OSError, RuntimeError) as error:
+            # xfdesktop rebuilds its window a moment after a resolution change.
+            if attempts > 1:
+                self.restart_timer_id = self.GLib.timeout_add_seconds(
+                    1, self.retry_restart, attempts - 1
+                )
+                return
+            self.restarting = False
+            message = f"No se pudo readaptar el fondo a la nueva resolución: {error}"
+            print(message, file=sys.stderr)
+            if self.on_error is not None:
+                self.on_error(message)
+            return
+        self.restarting = False
+
+    def retry_restart(self, attempts):
+        self.restart_timer_id = None
+        self.try_restart(attempts)
+        return self.GLib.SOURCE_REMOVE
 
     @property
     def running(self):
         return bool(self.players)
 
     def start(self, video, fit, audio, icon_size=48, preferences=None):
+        if self.restart_timer_id is not None:
+            # A manual start supersedes a pending automatic restart.
+            self.GLib.source_remove(self.restart_timer_id)
+            self.restart_timer_id = None
+            self.restarting = False
         video = video.expanduser().resolve()
         if not video.is_file():
             raise RuntimeError(f"No se encontró el video: {video}")
@@ -913,9 +1059,16 @@ class WallpaperController:
         self.pause_on_activity = preferences.data["pause_on_activity"]
         self.exceptions = preferences.data["pause_exceptions"]
         try:
-            for index in range(self.display.get_n_monitors()):
-                monitor = self.display.get_monitor(index)
+            mirrored = set()
+            for monitor_index in range(self.display.get_n_monitors()):
+                monitor = self.display.get_monitor(monitor_index)
                 geometry = monitor.get_geometry()
+                area = (geometry.x, geometry.y, geometry.width, geometry.height)
+                # Mirrored monitors share one area; one player is enough.
+                if area in mirrored:
+                    continue
+                mirrored.add(area)
+                index = len(self.windows)
                 window = self.Gtk.Window(type=self.Gtk.WindowType.TOPLEVEL)
                 window.set_title("Xalive Wallpaper Video")
                 window.set_decorated(False)
@@ -995,6 +1148,8 @@ class WallpaperController:
                     window.get_window().raise_()
 
             self.active_video = video
+            self.last_start = (video, fit, audio, preferences)
+            self.layout = self.layout_signature()
             self.timer_id = self.GLib.timeout_add_seconds(2, self.check_players)
             self.activity_timer_id = self.GLib.timeout_add_seconds(1, self.check_activity)
         except (OSError, RuntimeError):
@@ -1125,6 +1280,9 @@ class WallpaperController:
         return self.GLib.SOURCE_CONTINUE
 
     def stop(self):
+        if self.restart_timer_id is not None and not self.restarting:
+            self.GLib.source_remove(self.restart_timer_id)
+            self.restart_timer_id = None
         if self.timer_id is not None:
             self.GLib.source_remove(self.timer_id)
             self.timer_id = None
@@ -1159,7 +1317,7 @@ class WallpaperController:
             self.icon_layer = None
         self.active_video = None
 
-        if was_running and self.on_stopped is not None:
+        if was_running and self.on_stopped is not None and not self.restarting:
             self.on_stopped()
 
 
@@ -1300,6 +1458,14 @@ class WallpaperApp:
         options.attach(Gtk.Label(label="Iniciar con la sesión", xalign=0), 0, 5, 1, 1)
         options.attach(self.autostart_switch, 1, 5, 1, 1)
         settings_box.pack_start(options_frame, False, False, 0)
+
+        monitors_frame = Gtk.Frame(label=" Monitores ")
+        self.monitors_grid = Gtk.Grid(column_spacing=18, row_spacing=10)
+        self.monitors_grid.set_border_width(14)
+        monitors_frame.add(self.monitors_grid)
+        settings_box.pack_start(monitors_frame, False, False, 0)
+        self.controller.on_layout_changed = self.reload_monitors
+        self.reload_monitors()
 
         exceptions_frame = Gtk.Frame(label=" Excepciones (nunca pausan el fondo) ")
         exceptions_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -2171,6 +2337,103 @@ class WallpaperApp:
             self.preferences.save()
             self.reload_exceptions()
 
+    def reload_monitors(self):
+        Gtk = self.Gtk
+        for child in self.monitors_grid.get_children():
+            self.monitors_grid.remove(child)
+        saved = self.preferences.data["monitor_modes"]
+        outputs = query_outputs()
+        for row, output in enumerate(outputs):
+            current = (output["mode"] or "?").replace("x", "×")
+            label = Gtk.Label(label=f"{output['name']}  (ahora {current})", xalign=0)
+            label.set_hexpand(True)
+            self.monitors_grid.attach(label, 0, row, 1, 1)
+            combo = Gtk.ComboBoxText()
+            combo.append("auto", "Automática (se adapta sola)")
+            for mode in sorted(
+                output["modes"],
+                key=lambda m: tuple(int(v) for v in re.findall(r"\d+", m)[:2]),
+                reverse=True,
+            ):
+                text = mode.replace("x", "×", 1)
+                if mode == output["preferred"]:
+                    text += " (recomendada)"
+                combo.append(mode, text)
+            wanted = saved.get(output["name"])
+            combo.set_active_id(wanted if wanted in output["modes"] else "auto")
+            combo.connect(
+                "changed", self.on_monitor_mode_changed, output["name"], output["mode"]
+            )
+            self.monitors_grid.attach(combo, 1, row, 1, 1)
+        note = Gtk.Label(
+            label="El fondo se adapta solo a la resolución de cada monitor. "
+            "Una resolución menor también reduce la carga de la GPU.",
+            xalign=0,
+        )
+        note.set_line_wrap(True)
+        self.monitors_grid.attach(note, 0, len(outputs), 2, 1)
+        self.monitors_grid.show_all()
+
+    def on_monitor_mode_changed(self, combo, name, previous_mode):
+        choice = combo.get_active_id()
+        saved = self.preferences.data["monitor_modes"]
+        if choice is None:
+            return
+        if choice == "auto":
+            saved.pop(name, None)
+            self.preferences.save()
+            self.status.set_text(f"{name}: resolución automática.")
+            return
+        if choice != previous_mode:
+            ok, message = set_output_mode(name, choice)
+            if not ok:
+                self.status.set_text(f"No se pudo cambiar {name} a {choice}: {message}")
+                self.GLib.idle_add(self.reload_monitors)
+                return
+            if not self.confirm_mode(name, choice):
+                if previous_mode:
+                    set_output_mode(name, previous_mode)
+                self.status.set_text(f"{name}: se revirtió a {previous_mode}.")
+                self.GLib.idle_add(self.reload_monitors)
+                return
+        saved[name] = choice
+        self.preferences.save()
+        self.status.set_text(f"{name}: {choice.replace('x', '×')}.")
+        self.GLib.idle_add(self.reload_monitors)
+
+    def confirm_mode(self, name, mode, seconds=10):
+        Gtk = self.Gtk
+        dialog = Gtk.MessageDialog(
+            transient_for=self.window,
+            modal=True,
+            message_type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.NONE,
+            text=f"¿Mantener {mode.replace('x', '×')} en {name}?",
+        )
+        dialog.add_button("Revertir", Gtk.ResponseType.CANCEL)
+        dialog.add_button("Mantener", Gtk.ResponseType.OK)
+        dialog.set_keep_above(True)
+        state = {"left": seconds, "timer": None}
+
+        def tick():
+            state["left"] -= 1
+            if state["left"] <= 0:
+                state["timer"] = None
+                dialog.response(Gtk.ResponseType.CANCEL)
+                return False
+            dialog.format_secondary_text(
+                f"Si no confirmas, se revertirá en {state['left']} s."
+            )
+            return True
+
+        dialog.format_secondary_text(f"Si no confirmas, se revertirá en {seconds} s.")
+        state["timer"] = self.GLib.timeout_add_seconds(1, tick)
+        response = dialog.run()
+        if state["timer"] is not None:
+            self.GLib.source_remove(state["timer"])
+        dialog.destroy()
+        return response == Gtk.ResponseType.OK
+
     def on_pause_switch_changed(self, switch, _param):
         enabled = switch.get_active()
         self.preferences.data["pause_on_activity"] = enabled
@@ -2305,6 +2568,7 @@ def main():
         mpv,
     )
     preferences = WallpaperPreferences()
+    apply_saved_modes(preferences)
     signal.signal(signal.SIGINT, lambda *_: Gtk.main_quit())
     signal.signal(signal.SIGTERM, lambda *_: Gtk.main_quit())
     signal.signal(signal.SIGHUP, lambda *_: Gtk.main_quit())
