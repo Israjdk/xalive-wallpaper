@@ -11,6 +11,34 @@ It uses GTK 3 to create windows stacked just above the desktop and embeds
 > [`xalive.py`](xalive.py) (the wallpaper catalogs are in `xalive_sources.py`),
 > and pull requests are welcome.
 
+## Screenshots
+
+![Graphical interface](docs/gui.png)
+
+![Arlecchino wallpaper with the icon layer](docs/desktop-arlecchino.png)
+
+![Train wallpaper with the icon layer](docs/desktop-train.png)
+
+The desktop icons shown are sample launchers, not real ones. The wallpapers are
+third-party artwork used only to demonstrate the app; they are not included in
+this repository.
+
+## Performance
+
+Measured over 40 seconds of playback, with the wallpaper visible, on a laptop
+with an Intel Core 3 100U (8 threads), 7.6 GB of RAM, mpv 0.37.0 and VAAPI
+hardware decoding. The screen was 1368x768.
+
+| Video | Format | Size | CPU (one core = 100 %) | RAM |
+|-------|--------|------|------------------------|-----|
+| Arlecchino (moewalls) | H.264, 3840x2160, 60 fps | 78 MB | 13.2 % (mpv 11.7 % + app 1.6 %) | 267 MB |
+| Train | H.264, 3840x2160, 60 fps | 65 MB | 14.0 % (mpv 12.3 % + app 1.7 %) | 258 MB |
+
+That is about 1.7 % of the total CPU of the machine while playing 4K at 60 fps.
+Without hardware decoding the load is much higher, so make sure your VAAPI
+driver works (`vainfo`). When another application is maximized, playback pauses
+and the CPU use drops to almost zero.
+
 This is an early prototype. Desktop window stacking differs between window
 managers, so the result needs testing on the target desktop; XFCE is the first
 target.
