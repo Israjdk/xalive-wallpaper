@@ -1281,7 +1281,7 @@ class WallpaperController:
                 except OSError as error:
                     print(f"Pause on activity unavailable: {error}", file=sys.stderr)
             self.timer_id = self.GLib.timeout_add_seconds(2, self.check_players)
-            self.activity_timer_id = self.GLib.timeout_add(250, self.check_activity)
+            self.activity_timer_id = self.GLib.timeout_add(50, self.check_activity)
         except (OSError, RuntimeError):
             self.stop()
             raise
