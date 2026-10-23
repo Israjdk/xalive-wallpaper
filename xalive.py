@@ -19,6 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import xalive_sources as sources  # noqa: E402
+from xalive_i18n import tr  # noqa: E402
 
 
 ICON_SIZE_MIN = 24
@@ -131,6 +132,7 @@ class WallpaperPreferences:
         self.data = {
             "icon_size": 48,
             "show_icons": True,
+            "language": "auto",
             "icon_positions": {},
             "pause_on_activity": True,
             "pause_exceptions": [],
@@ -164,6 +166,8 @@ class WallpaperPreferences:
                 self.data["last_video"] = saved["last_video"]
             if saved.get("last_fit") in ("cover", "contain"):
                 self.data["last_fit"] = saved["last_fit"]
+            if saved.get("language") in ("auto", "es", "en"):
+                self.data["language"] = saved["language"]
             for key in ("restore_last", "last_audio", "show_icons"):
                 if isinstance(saved.get(key), bool):
                     self.data[key] = saved[key]
@@ -1053,7 +1057,7 @@ class WallpaperController:
                 )
                 return
             self.restarting = False
-            message = f"No se pudo readaptar el fondo a la nueva resolución: {error}"
+            message = tr("No se pudo readaptar el fondo a la nueva resolución: {error}", error=error)
             print(message, file=sys.stderr)
             if self.on_error is not None:
                 self.on_error(message)
@@ -1077,7 +1081,7 @@ class WallpaperController:
             self.restarting = False
         video = video.expanduser().resolve()
         if not video.is_file():
-            raise RuntimeError(f"No se encontró el video: {video}")
+            raise RuntimeError(tr("No se encontró el video: {video}", video=video))
         if self.running:
             self.stop()
         self.icon_size = icon_size
@@ -1157,7 +1161,7 @@ class WallpaperController:
                 self.players.append(subprocess.Popen(command))
 
             if not self.windows:
-                raise RuntimeError("No se encontraron monitores.")
+                raise RuntimeError(tr("No se encontraron monitores."))
 
             if preferences.data["show_icons"] and XfceIconLayer.available():
                 desktop_window = XfceIconLayer.find_xfdesktop_window(
@@ -1309,7 +1313,7 @@ class WallpaperController:
             returncode = player.poll()
             if returncode is not None:
                 self.timer_id = None
-                message = f"mpv terminó inesperadamente (estado {returncode})."
+                message = tr("mpv terminó inesperadamente (estado {code}).", code=returncode)
                 print(message, file=sys.stderr)
                 self.stop()
                 if self.on_error is not None:
@@ -1400,7 +1404,7 @@ class WallpaperApp:
 
         header = Gtk.HeaderBar()
         header.set_title("Xalive Wallpaper")
-        header.set_subtitle("Fondos animados para tu escritorio")
+        header.set_subtitle(tr("Fondos animados para tu escritorio"))
         header.set_show_close_button(True)
         self.window.set_titlebar(header)
 
@@ -1409,18 +1413,18 @@ class WallpaperApp:
         self.window.add(root)
 
         title = Gtk.Label()
-        title.set_markup("<big><b>Tu escritorio, en movimiento</b></big>")
+        title.set_markup(f"<big><b>{tr('Tu escritorio, en movimiento')}</b></big>")
         title.set_xalign(0)
         root.pack_start(title, False, False, 0)
 
         description = Gtk.Label(
-            label="Elige un video y ajusta cómo se verá en tus pantallas."
+            label=tr("Elige un video y ajusta cómo se verá en tus pantallas.")
         )
         description.set_xalign(0)
         description.set_line_wrap(True)
         root.pack_start(description, False, False, 0)
 
-        file_frame = Gtk.Frame(label=" Video ")
+        file_frame = Gtk.Frame(label=tr(" Video "))
         file_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         file_box.set_border_width(14)
         file_frame.add(file_box)
@@ -1428,9 +1432,9 @@ class WallpaperApp:
         self.file_label.set_xalign(0)
         self.file_label.set_ellipsize(Pango.EllipsizeMode.END)
         self.file_label.set_hexpand(True)
-        self.file_label.set_tooltip_text("Selecciona un archivo de video")
+        self.file_label.set_tooltip_text(tr("Selecciona un archivo de video"))
         file_box.pack_start(self.file_label, True, True, 0)
-        choose_button = Gtk.Button(label="Elegir video…")
+        choose_button = Gtk.Button(label=tr("Elegir video…"))
         choose_button.connect("clicked", self.choose_video)
         file_box.pack_start(choose_button, False, False, 0)
         root.pack_start(file_frame, False, False, 0)
@@ -1443,31 +1447,31 @@ class WallpaperApp:
         settings_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         settings_scroll.add(settings_box)
         self.build_library_tab()
-        self.notebook.append_page(settings_scroll, Gtk.Label(label="Ajustes"))
+        self.notebook.append_page(settings_scroll, Gtk.Label(label=tr("Ajustes")))
         self.build_browser_tab()
 
-        options_frame = Gtk.Frame(label=" Opciones ")
+        options_frame = Gtk.Frame(label=tr(" Opciones "))
         options = Gtk.Grid(column_spacing=18, row_spacing=14)
         options.set_border_width(14)
         options_frame.add(options)
-        fit_label = Gtk.Label(label="Ajuste a pantalla")
+        fit_label = Gtk.Label(label=tr("Ajuste a pantalla"))
         fit_label.set_xalign(0)
         options.attach(fit_label, 0, 0, 1, 1)
         self.fit_combo = Gtk.ComboBoxText()
-        self.fit_combo.append("cover", "Cubrir (recorta los bordes)")
-        self.fit_combo.append("contain", "Contener (puede dejar márgenes)")
+        self.fit_combo.append("cover", tr("Cubrir (recorta los bordes)"))
+        self.fit_combo.append("contain", tr("Contener (puede dejar márgenes)"))
         self.fit_combo.set_active_id(preferences.data["last_fit"])
         options.attach(self.fit_combo, 1, 0, 1, 1)
         self.audio_switch = Gtk.Switch()
         self.audio_switch.set_halign(Gtk.Align.START)
         self.audio_switch.set_active(preferences.data["last_audio"])
-        options.attach(Gtk.Label(label="Reproducir audio"), 0, 1, 1, 1)
+        options.attach(Gtk.Label(label=tr("Reproducir audio")), 0, 1, 1, 1)
         options.attach(self.audio_switch, 1, 1, 1, 1)
         self.pause_switch = Gtk.Switch()
         self.pause_switch.set_halign(Gtk.Align.START)
         self.pause_switch.set_active(preferences.data["pause_on_activity"])
         self.pause_switch.connect("notify::active", self.on_pause_switch_changed)
-        pause_label = Gtk.Label(label="Pausar con ventanas maximizadas o a pantalla completa")
+        pause_label = Gtk.Label(label=tr("Pausar con ventanas maximizadas o a pantalla completa"))
         pause_label.set_xalign(0)
         options.attach(pause_label, 0, 2, 1, 1)
         options.attach(self.pause_switch, 1, 2, 1, 1)
@@ -1475,9 +1479,9 @@ class WallpaperApp:
         self.icons_switch.set_halign(Gtk.Align.START)
         self.icons_switch.set_active(preferences.data["show_icons"])
         self.icons_switch.connect("notify::active", self.on_icons_switch_changed)
-        options.attach(Gtk.Label(label="Mostrar iconos del escritorio", xalign=0), 0, 3, 1, 1)
+        options.attach(Gtk.Label(label=tr("Mostrar iconos del escritorio"), xalign=0), 0, 3, 1, 1)
         options.attach(self.icons_switch, 1, 3, 1, 1)
-        options.attach(Gtk.Label(label="Tamaño de los iconos"), 0, 4, 1, 1)
+        options.attach(Gtk.Label(label=tr("Tamaño de los iconos")), 0, 4, 1, 1)
         size_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self.icon_size_scale = Gtk.Scale.new_with_range(
             Gtk.Orientation.HORIZONTAL,
@@ -1492,13 +1496,13 @@ class WallpaperApp:
         size_box.pack_start(self.icon_size_scale, True, True, 0)
         range_labels = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         range_labels.pack_start(
-            Gtk.Label(label=f"Pequeño ({ICON_SIZE_MIN} px)"),
+            Gtk.Label(label=tr("Pequeño ({size} px)", size=ICON_SIZE_MIN)),
             False,
             False,
             0,
         )
         range_labels.pack_end(
-            Gtk.Label(label=f"Grande ({ICON_SIZE_MAX} px)"),
+            Gtk.Label(label=tr("Grande ({size} px)", size=ICON_SIZE_MAX)),
             False,
             False,
             0,
@@ -1511,17 +1515,26 @@ class WallpaperApp:
         self.restore_switch.set_halign(Gtk.Align.START)
         self.restore_switch.set_active(preferences.data["restore_last"])
         self.restore_switch.connect("notify::active", self.on_restore_switch_changed)
-        options.attach(Gtk.Label(label="Recordar el último fondo al abrir", xalign=0), 0, 5, 1, 1)
+        options.attach(Gtk.Label(label=tr("Recordar el último fondo al abrir"), xalign=0), 0, 5, 1, 1)
         options.attach(self.restore_switch, 1, 5, 1, 1)
         self.autostart_switch = Gtk.Switch()
         self.autostart_switch.set_halign(Gtk.Align.START)
         self.autostart_switch.set_active(autostart_enabled())
         self.autostart_switch.connect("notify::active", self.on_autostart_switch_changed)
-        options.attach(Gtk.Label(label="Iniciar con la sesión", xalign=0), 0, 6, 1, 1)
+        options.attach(Gtk.Label(label=tr("Iniciar con la sesión"), xalign=0), 0, 6, 1, 1)
         options.attach(self.autostart_switch, 1, 6, 1, 1)
+        self.language_combo = Gtk.ComboBoxText()
+        self.language_combo.append("auto", tr("Automático"))
+        self.language_combo.append("es", tr("Español"))
+        self.language_combo.append("en", tr("Inglés"))
+        self.language_combo.set_active_id(preferences.data["language"])
+        self.language_combo.set_tooltip_text(tr("El idioma cambia al reiniciar Xalive Wallpaper."))
+        self.language_combo.connect("changed", self.on_language_changed)
+        options.attach(Gtk.Label(label=tr("Idioma"), xalign=0), 0, 7, 1, 1)
+        options.attach(self.language_combo, 1, 7, 1, 1)
         settings_box.pack_start(options_frame, False, False, 0)
 
-        monitors_frame = Gtk.Frame(label=" Monitores ")
+        monitors_frame = Gtk.Frame(label=tr(" Monitores "))
         self.monitors_grid = Gtk.Grid(column_spacing=18, row_spacing=10)
         self.monitors_grid.set_border_width(14)
         monitors_frame.add(self.monitors_grid)
@@ -1529,7 +1542,7 @@ class WallpaperApp:
         self.controller.on_layout_changed = self.reload_monitors
         self.reload_monitors()
 
-        exceptions_frame = Gtk.Frame(label=" Excepciones (nunca pausan el fondo) ")
+        exceptions_frame = Gtk.Frame(label=tr(" Excepciones (nunca pausan el fondo) "))
         exceptions_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         exceptions_box.set_border_width(14)
         exceptions_frame.add(exceptions_box)
@@ -1543,13 +1556,13 @@ class WallpaperApp:
         self.exception_combo = Gtk.ComboBoxText.new_with_entry()
         self.exception_combo.set_hexpand(True)
         self.exception_combo.set_tooltip_text(
-            "Clase de la ventana (WM_CLASS), p. ej. mpv o vlc"
+            tr("Clase de la ventana (WM_CLASS), p. ej. mpv o vlc")
         )
         add_row.pack_start(self.exception_combo, True, True, 0)
-        add_button = Gtk.Button(label="Añadir")
+        add_button = Gtk.Button(label=tr("Añadir"))
         add_button.connect("clicked", self.add_exception)
         add_row.pack_start(add_button, False, False, 0)
-        remove_button = Gtk.Button(label="Quitar")
+        remove_button = Gtk.Button(label=tr("Quitar"))
         remove_button.connect("clicked", self.remove_exception)
         add_row.pack_start(remove_button, False, False, 0)
         exceptions_box.pack_start(add_row, False, False, 0)
@@ -1560,18 +1573,18 @@ class WallpaperApp:
         self.status.set_xalign(0)
         self.status.set_line_wrap(True)
         self.status.set_text(
-            "Arrastra los iconos para moverlos por la cuadrícula; "
-            "tamaño y posiciones se guardan."
+            tr("Arrastra los iconos para moverlos por la cuadrícula; "
+            "tamaño y posiciones se guardan.")
         )
         root.pack_start(self.status, True, True, 0)
 
         actions = Gtk.ButtonBox(orientation=Gtk.Orientation.HORIZONTAL)
         actions.set_layout(Gtk.ButtonBoxStyle.END)
         actions.set_spacing(10)
-        self.stop_button = Gtk.Button(label="Detener fondo")
+        self.stop_button = Gtk.Button(label=tr("Detener fondo"))
         self.stop_button.connect("clicked", self.stop_wallpaper)
         actions.add(self.stop_button)
-        self.apply_button = Gtk.Button(label="Aplicar fondo")
+        self.apply_button = Gtk.Button(label=tr("Aplicar fondo"))
         self.apply_button.get_style_context().add_class("suggested-action")
         self.apply_button.connect("clicked", self.apply_wallpaper)
         actions.add(self.apply_button)
@@ -1610,7 +1623,7 @@ class WallpaperApp:
         self.build_web_page()
 
         self.browser_hint = Gtk.Label(
-            label="Las descargas se guardan sin modificar en la carpeta de la biblioteca."
+            label=tr("Las descargas se guardan sin modificar en la carpeta de la biblioteca.")
         )
         self.browser_hint.set_xalign(0)
         self.browser_hint.set_line_wrap(True)
@@ -1619,7 +1632,7 @@ class WallpaperApp:
         self.browser_box.pack_start(self.downloads_box, False, False, 0)
 
         self.stack.connect("notify::visible-child", self.on_stack_page)
-        self.notebook.insert_page(self.browser_box, Gtk.Label(label="Descargar"), 1)
+        self.notebook.insert_page(self.browser_box, Gtk.Label(label=tr("Descargar")), 1)
         self.notebook.connect("switch-page", self.on_notebook_page)
 
     def build_gallery_page(self):
@@ -1633,10 +1646,10 @@ class WallpaperApp:
         self.source_combo.connect("changed", lambda *_: self.reload_gallery())
         bar.pack_start(self.source_combo, False, False, 0)
         self.search_entry = Gtk.SearchEntry()
-        self.search_entry.set_placeholder_text("Buscar wallpapers…")
+        self.search_entry.set_placeholder_text(tr("Buscar wallpapers…"))
         self.search_entry.connect("activate", lambda *_: self.reload_gallery())
         bar.pack_start(self.search_entry, True, True, 0)
-        search_button = Gtk.Button(label="Buscar")
+        search_button = Gtk.Button(label=tr("Buscar"))
         search_button.connect("clicked", lambda *_: self.reload_gallery())
         bar.pack_start(search_button, False, False, 0)
         page.pack_start(bar, False, False, 0)
@@ -1653,7 +1666,7 @@ class WallpaperApp:
         self.gallery_flow.set_column_spacing(10)
         gallery_inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         gallery_inner.pack_start(self.gallery_flow, False, False, 0)
-        self.more_button = Gtk.Button(label="Cargar más")
+        self.more_button = Gtk.Button(label=tr("Cargar más"))
         self.more_button.connect("clicked", lambda *_: self.load_gallery_page())
         gallery_inner.pack_start(self.more_button, False, False, 0)
         scroll.add(gallery_inner)
@@ -1662,7 +1675,7 @@ class WallpaperApp:
         self.gallery_status.set_xalign(0)
         self.gallery_status.set_line_wrap(True)
         page.pack_start(self.gallery_status, False, False, 0)
-        self.stack.add_titled(page, "gallery", "Explorar")
+        self.stack.add_titled(page, "gallery", tr("Explorar"))
 
     def build_web_page(self):
         Gtk = self.Gtk
@@ -1677,21 +1690,21 @@ class WallpaperApp:
         for button in (self.back_button, self.forward_button, self.reload_button):
             bar.pack_start(button, False, False, 0)
         self.sites_combo = Gtk.ComboBoxText()
-        self.sites_combo.append_text("Sitios…")
+        self.sites_combo.append_text(tr("Sitios…"))
         for name, _url in BROWSER_SITES:
             self.sites_combo.append_text(name)
         self.sites_combo.set_active(0)
         self.sites_combo.connect("changed", self.on_site_selected)
         bar.pack_start(self.sites_combo, False, False, 0)
         self.url_entry = Gtk.Entry()
-        self.url_entry.set_placeholder_text("Dirección o texto a buscar")
+        self.url_entry.set_placeholder_text(tr("Dirección o texto a buscar"))
         self.url_entry.connect("activate", self.on_url_activate)
         bar.pack_start(self.url_entry, True, True, 0)
         page.pack_start(bar, False, False, 0)
         self.web_holder = Gtk.Box()
         self.web_holder.set_size_request(-1, 190)
         page.pack_start(self.web_holder, True, True, 0)
-        self.stack.add_titled(page, "browser", "Navegador")
+        self.stack.add_titled(page, "browser", tr("Navegador"))
 
     def on_notebook_page(self, _notebook, page, _number):
         if page is self.browser_box and not self.gallery_loaded:
@@ -1715,7 +1728,7 @@ class WallpaperApp:
             gi.require_version("WebKit2", "4.1")
             from gi.repository import WebKit2
         except (ImportError, ValueError):
-            self.web_error = "Falta WebKitGTK: sudo apt install gir1.2-webkit2-4.1"
+            self.web_error = tr("Falta WebKitGTK: sudo apt install gir1.2-webkit2-4.1")
             self.browser_hint.set_text(self.web_error)
             return False
         self.web_modules = WebKit2
@@ -1812,7 +1825,7 @@ class WallpaperApp:
         page = self.gallery_page
         generation = self.gallery_generation
         self.more_button.set_sensitive(False)
-        self.gallery_status.set_text("Cargando…")
+        self.gallery_status.set_text(tr("Cargando…"))
 
         def work():
             try:
@@ -1829,7 +1842,7 @@ class WallpaperApp:
             return False
         self.more_button.set_sensitive(True)
         if error:
-            self.gallery_status.set_text(f"No se pudo cargar: {error}")
+            self.gallery_status.set_text(tr("No se pudo cargar: {error}", error=error))
             return False
         fresh = [item for item in items if item.page not in self.gallery_seen]
         for item in fresh:
@@ -1838,7 +1851,7 @@ class WallpaperApp:
         self.gallery_flow.show_all()
         self.gallery_page += 1
         self.more_button.set_visible(bool(fresh))
-        self.gallery_status.set_text("" if fresh else "No hay más resultados.")
+        self.gallery_status.set_text("" if fresh else tr("No hay más resultados."))
         return False
 
     def create_card(self, item, generation):
@@ -1858,7 +1871,7 @@ class WallpaperApp:
             detail = Gtk.Label(label=item.detail)
             detail.get_style_context().add_class("dim-label")
             row.pack_start(detail, False, False, 0)
-        button = Gtk.Button(label="Descargar")
+        button = Gtk.Button(label=tr("Descargar"))
         button.connect("clicked", self.on_card_download, item)
         row.pack_start(button, False, False, 0)
         card.pack_start(row, False, False, 0)
@@ -1900,7 +1913,7 @@ class WallpaperApp:
         folder = self.download_folder()
         if folder is None:
             self.gallery_status.set_text(
-                "Elige primero una carpeta en la pestaña Biblioteca."
+                tr("Elige primero una carpeta en la pestaña Biblioteca.")
             )
             return
         source = next(s for s in sources.SOURCES if s.name == item.source)
@@ -1918,8 +1931,8 @@ class WallpaperApp:
         bar = self.Gtk.ProgressBar()
         bar.set_hexpand(True)
         bar.set_show_text(True)
-        bar.set_text("Preparando…")
-        cancel = self.Gtk.Button(label="Cancelar")
+        bar.set_text(tr("Preparando…"))
+        cancel = self.Gtk.Button(label=tr("Cancelar"))
         cancel.connect("clicked", lambda *_: on_cancel())
         row.pack_start(label, False, False, 0)
         row.pack_start(bar, True, True, 0)
@@ -1971,7 +1984,7 @@ class WallpaperApp:
         if error:
             self.end_download_row(entry, error, False)
         else:
-            self.end_download_row(entry, "Completado", True)
+            self.end_download_row(entry, tr("Completado"), True)
             self.reload_library()
         return False
 
@@ -2024,7 +2037,7 @@ class WallpaperApp:
     def helper_timeout(self, state):
         state["deadline"] = None
         if not state["started"]:
-            self.close_helper(state, "No se pudo iniciar la descarga")
+            self.close_helper(state, tr("No se pudo iniciar la descarga"))
         return False
 
     def close_helper(self, state, text=None):
@@ -2044,7 +2057,7 @@ class WallpaperApp:
         if download is not None:
             download.cancel()
         else:
-            self.close_helper(state, "Cancelado")
+            self.close_helper(state, tr("Cancelado"))
 
     def on_download_started(self, _context, download):
         state = self.helpers.get(download.get_web_view())
@@ -2063,7 +2076,7 @@ class WallpaperApp:
         if folder is None:
             download.cancel()
             self.gallery_status.set_text(
-                "Elige primero una carpeta en la pestaña Biblioteca."
+                tr("Elige primero una carpeta en la pestaña Biblioteca.")
             )
             return True
         target = sources.unique_target(folder, suggested or "wallpaper.mp4")
@@ -2086,7 +2099,7 @@ class WallpaperApp:
             self.close_helper(ctx["helper"])
 
     def on_download_finished(self, _download, ctx):
-        self.finish_web_download(ctx, "Completado", True)
+        self.finish_web_download(ctx, tr("Completado"), True)
         self.reload_library()
 
     def on_download_failed(self, download, _error, ctx):
@@ -2108,7 +2121,7 @@ class WallpaperApp:
         self.folder_label.set_hexpand(True)
         self.folder_label.set_ellipsize(self.Pango.EllipsizeMode.MIDDLE)
         folder_row.pack_start(self.folder_label, True, True, 0)
-        folder_button = Gtk.Button(label="Elegir carpeta…")
+        folder_button = Gtk.Button(label=tr("Elegir carpeta…"))
         folder_button.connect("clicked", self.choose_folder)
         folder_row.pack_start(folder_button, False, False, 0)
         box.pack_start(folder_row, False, False, 0)
@@ -2127,13 +2140,13 @@ class WallpaperApp:
         self.library_flow.connect("selected-children-changed", self.on_library_selected)
         scroll.add(self.library_flow)
         box.pack_start(scroll, True, True, 0)
-        self.notebook.insert_page(box, Gtk.Label(label="Biblioteca"), 0)
+        self.notebook.insert_page(box, Gtk.Label(label=tr("Biblioteca")), 0)
         self.library_generation = 0
         self.reload_library()
 
     def choose_folder(self, *_args):
         dialog = self.Gtk.FileChooserDialog(
-            title="Carpeta de wallpapers",
+            title=tr("Carpeta de wallpapers"),
             parent=self.window,
             action=self.Gtk.FileChooserAction.SELECT_FOLDER,
         )
@@ -2158,7 +2171,7 @@ class WallpaperApp:
         self.library_generation += 1
         folder = self.preferences.data["library_folder"]
         if not folder or not Path(folder).is_dir():
-            self.folder_label.set_text("Ninguna carpeta seleccionada")
+            self.folder_label.set_text(tr("Ninguna carpeta seleccionada"))
             return
         self.folder_label.set_text(folder)
         try:
@@ -2171,7 +2184,7 @@ class WallpaperApp:
                 key=lambda path: path.name.casefold(),
             )
         except OSError as error:
-            self.folder_label.set_text(f"No se pudo leer la carpeta: {error}")
+            self.folder_label.set_text(tr("No se pudo leer la carpeta: {error}", error=error))
             return
         items = []
         for video in videos:
@@ -2257,8 +2270,8 @@ class WallpaperApp:
 
     def update_selected_video(self):
         if self.video is None:
-            self.file_label.set_text("Ningún video seleccionado")
-            self.file_label.set_tooltip_text("Selecciona un archivo de video")
+            self.file_label.set_text(tr("Ningún video seleccionado"))
+            self.file_label.set_tooltip_text(tr("Selecciona un archivo de video"))
             return
         self.file_label.set_text(self.video.name)
         self.file_label.set_tooltip_text(str(self.video))
@@ -2276,7 +2289,7 @@ class WallpaperApp:
             self.Gtk.ResponseType.ACCEPT,
         )
         video_filter = self.Gtk.FileFilter()
-        video_filter.set_name("Archivos de video")
+        video_filter.set_name(tr("Archivos de video"))
         video_filter.add_mime_type("video/*")
         for pattern in (
             "*.mp4",
@@ -2295,7 +2308,7 @@ class WallpaperApp:
         dialog.add_filter(video_filter)
         dialog.set_filter(video_filter)
         all_filter = self.Gtk.FileFilter()
-        all_filter.set_name("Todos los archivos")
+        all_filter.set_name(tr("Todos los archivos"))
         all_filter.add_pattern("*")
         dialog.add_filter(all_filter)
         if current is not None:
@@ -2307,7 +2320,7 @@ class WallpaperApp:
         return chosen
 
     def choose_video(self, *_args):
-        chosen = self.pick_video_file("Seleccionar video", self.video)
+        chosen = self.pick_video_file(tr("Seleccionar video"), self.video)
         if chosen is not None:
             self.video = chosen
             self.update_selected_video()
@@ -2317,7 +2330,7 @@ class WallpaperApp:
         videos = self.preferences.data["monitor_videos"]
         current = videos.get(name)
         chosen = self.pick_video_file(
-            f"Video para {name}", Path(current) if current else self.video
+            tr("Video para {name}", name=name), Path(current) if current else self.video
         )
         if chosen is None:
             return
@@ -2327,7 +2340,7 @@ class WallpaperApp:
     def clear_monitor_video(self, _button, name):
         if self.preferences.data["monitor_videos"].pop(name, None) is None:
             return
-        self.after_monitor_video_change(f"{name}: usa el video general.")
+        self.after_monitor_video_change(tr("{name}: usa el video general.", name=name))
 
     def after_monitor_video_change(self, message):
         self.preferences.save()
@@ -2338,7 +2351,7 @@ class WallpaperApp:
 
     def apply_wallpaper(self, *_args, quiet=False):
         if self.video is None:
-            self.status.set_text("Primero elige un video.")
+            self.status.set_text(tr("Primero elige un video."))
             return
         self.quiet_start = quiet
         try:
@@ -2362,16 +2375,16 @@ class WallpaperApp:
         data["last_fit"] = self.fit_combo.get_active_id()
         data["last_audio"] = self.audio_switch.get_active()
         self.preferences.save()
-        self.status.set_text(f"Fondo activo: {self.video.name}")
+        self.status.set_text(tr("Fondo activo: {name}", name=self.video.name))
         self.update_running_state()
 
     def stop_wallpaper(self, *_args):
         self.controller.stop()
-        self.status.set_text("Fondo detenido.")
+        self.status.set_text(tr("Fondo detenido."))
         self.update_running_state()
 
     def on_stopped(self):
-        self.status.set_text("Fondo detenido.")
+        self.status.set_text(tr("Fondo detenido."))
         self.update_running_state()
         if (
             not self.quiet_start
@@ -2444,7 +2457,7 @@ class WallpaperApp:
             label.set_hexpand(True)
             self.monitors_grid.attach(label, 0, row, 1, 1)
             combo = Gtk.ComboBoxText()
-            combo.append("auto", "Automática (se adapta sola)")
+            combo.append("auto", tr("Automática (se adapta sola)"))
             for mode in sorted(
                 output["modes"],
                 key=lambda m: tuple(int(v) for v in re.findall(r"\d+", m)[:2]),
@@ -2470,19 +2483,19 @@ class WallpaperApp:
             self.monitors_grid.attach(video_label, 0, row + 1, 1, 1)
             buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
             buttons.set_halign(Gtk.Align.END)
-            choose = Gtk.Button(label="Elegir video…")
+            choose = Gtk.Button(label=tr("Elegir video…"))
             choose.connect("clicked", self.choose_monitor_video, name)
             buttons.pack_start(choose, False, False, 0)
             if custom:
-                clear = Gtk.Button(label="Usar el general")
+                clear = Gtk.Button(label=tr("Usar el general"))
                 clear.connect("clicked", self.clear_monitor_video, name)
                 buttons.pack_start(clear, False, False, 0)
             self.monitors_grid.attach(buttons, 1, row + 1, 1, 1)
         note = Gtk.Label(
-            label="Cada monitor puede tener su propio video; sin elegir uno usa el "
+            label=tr("Cada monitor puede tener su propio video; sin elegir uno usa el "
             "general. Los monitores en espejo comparten un solo video. El fondo se "
             "adapta solo a la resolución, y una resolución menor reduce la carga "
-            "de la GPU.",
+            "de la GPU."),
             xalign=0,
         )
         note.set_line_wrap(True)
@@ -2497,18 +2510,18 @@ class WallpaperApp:
         if choice == "auto":
             saved.pop(name, None)
             self.preferences.save()
-            self.status.set_text(f"{name}: resolución automática.")
+            self.status.set_text(tr("{name}: resolución automática.", name=name))
             return
         if choice != previous_mode:
             ok, message = set_output_mode(name, choice)
             if not ok:
-                self.status.set_text(f"No se pudo cambiar {name} a {choice}: {message}")
+                self.status.set_text(tr("No se pudo cambiar {name} a {choice}: {message}", name=name, choice=choice, message=message))
                 self.GLib.idle_add(self.reload_monitors)
                 return
             if not self.confirm_mode(name, choice):
                 if previous_mode:
                     set_output_mode(name, previous_mode)
-                self.status.set_text(f"{name}: se revirtió a {previous_mode}.")
+                self.status.set_text(tr("{name}: se revirtió a {mode}.", name=name, mode=previous_mode))
                 self.GLib.idle_add(self.reload_monitors)
                 return
         saved[name] = choice
@@ -2523,10 +2536,10 @@ class WallpaperApp:
             modal=True,
             message_type=Gtk.MessageType.QUESTION,
             buttons=Gtk.ButtonsType.NONE,
-            text=f"¿Mantener {mode.replace('x', '×')} en {name}?",
+            text=tr("¿Mantener {mode} en {name}?", mode=mode.replace("x", "×"), name=name),
         )
-        dialog.add_button("Revertir", Gtk.ResponseType.CANCEL)
-        dialog.add_button("Mantener", Gtk.ResponseType.OK)
+        dialog.add_button(tr("Revertir"), Gtk.ResponseType.CANCEL)
+        dialog.add_button(tr("Mantener"), Gtk.ResponseType.OK)
         dialog.set_keep_above(True)
         state = {"left": seconds, "timer": None}
 
@@ -2537,11 +2550,11 @@ class WallpaperApp:
                 dialog.response(Gtk.ResponseType.CANCEL)
                 return False
             dialog.format_secondary_text(
-                f"Si no confirmas, se revertirá en {state['left']} s."
+                tr("Si no confirmas, se revertirá en {seconds} s.", seconds=state["left"])
             )
             return True
 
-        dialog.format_secondary_text(f"Si no confirmas, se revertirá en {seconds} s.")
+        dialog.format_secondary_text(tr("Si no confirmas, se revertirá en {seconds} s.", seconds=seconds))
         state["timer"] = self.GLib.timeout_add_seconds(1, tick)
         response = dialog.run()
         if state["timer"] is not None:
@@ -2563,6 +2576,11 @@ class WallpaperApp:
         if self.controller.running:
             self.controller.restart()
 
+    def on_language_changed(self, combo):
+        self.preferences.data["language"] = combo.get_active_id()
+        self.preferences.save()
+        self.status.set_text(tr("El idioma cambia al reiniciar Xalive Wallpaper."))
+
     def on_restore_switch_changed(self, switch, _param):
         self.preferences.data["restore_last"] = switch.get_active()
         self.preferences.save()
@@ -2571,7 +2589,7 @@ class WallpaperApp:
         try:
             set_autostart(switch.get_active())
         except OSError as error:
-            self.status.set_text(f"No se pudo cambiar el inicio automático: {error}")
+            self.status.set_text(tr("No se pudo cambiar el inicio automático: {error}", error=error))
             switch.handler_block_by_func(self.on_autostart_switch_changed)
             switch.set_active(autostart_enabled())
             switch.handler_unblock_by_func(self.on_autostart_switch_changed)
@@ -2586,7 +2604,7 @@ class WallpaperApp:
     def update_running_state(self):
         running = self.controller.running
         self.stop_button.set_sensitive(running)
-        self.apply_button.set_label("Cambiar fondo" if running else "Aplicar fondo")
+        self.apply_button.set_label(tr("Cambiar fondo") if running else tr("Aplicar fondo"))
 
     def on_close(self, *_args):
         # With an active wallpaper the program keeps running in the background.

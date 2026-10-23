@@ -249,6 +249,12 @@ python3 "/path/to/xalive.py" "/path/to/video.mp4"
 To stop an autostarted instance, end its `xalive.py` process from XFCE's
 session controls or a terminal.
 
+## Language
+
+The interface is available in Spanish and English (`xalive_i18n.py`). By
+default it follows your system locale (`es*` → Spanish, otherwise English); you
+can pick one in Settings → Language. The change applies after restarting the app.
+
 ## Current scope
 
 - X11 only; Wayland is not supported yet.

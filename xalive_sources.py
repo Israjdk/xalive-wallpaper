@@ -1,5 +1,6 @@
 """Wallpaper catalogs, direct downloads and ad-blocking rules for Xalive Wallpaper."""
 
+from xalive_i18n import tr
 import html
 import json
 import os
@@ -109,7 +110,7 @@ class MotionBGs:
             match = re.search(r'href=["\']?(/dl/%s/\d+/?)' % quality, text)
             if match:
                 return urllib.parse.urljoin("https://motionbgs.com/", match.group(1))
-        raise RuntimeError("No se encontró un enlace de descarga.")
+        raise RuntimeError(tr("No se encontró un enlace de descarga."))
 
 
 class InternetArchive:
@@ -149,7 +150,7 @@ class InternetArchive:
             and f["name"].lower().endswith((".mp4", ".webm", ".mkv", ".mov"))
         ]
         if not files:
-            raise RuntimeError("Este elemento no tiene un video original.")
+            raise RuntimeError(tr("Este elemento no tiene un video original."))
         best = max(files, key=lambda f: int(f.get("size", 0) or 0))
         return f"https://archive.org/download/{identifier}/" + urllib.parse.quote(best["name"])
 
@@ -176,7 +177,7 @@ def download_file(url, folder, progress, cancelled, referer=None):
     with urllib.request.urlopen(request, timeout=30) as response:
         mime = (response.headers.get_content_type() or "").lower()
         if not mime.startswith(VIDEO_TYPES):
-            raise RuntimeError("El enlace no devolvió un video.")
+            raise RuntimeError(tr("El enlace no devolvió un video."))
         name = response.headers.get_filename() or Path(
             urllib.parse.unquote(urllib.parse.urlparse(response.geturl()).path)
         ).name
