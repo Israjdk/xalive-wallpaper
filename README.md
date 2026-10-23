@@ -19,18 +19,27 @@ It uses GTK 3 to create windows stacked just above the desktop and embeds
 
 ![Train wallpaper with the icon layer](docs/desktop-train.png)
 
-### Demo videos
+### Demo
 
-Short clips recorded on the real desktop (no audio; personal details such as the
-taskbar and folder paths are cropped or blurred, and the thumbnail of the
-downloaded wallpaper is blurred):
+Short clips recorded on the real desktop (no audio). The taskbar is cropped and
+the folder path is blurred. Each one also has an `.mp4` version in
+[`docs/videos`](docs/videos).
 
-- [Changing the wallpaper](docs/videos/cambiar-wallpaper.mp4): pick a video from
-  the library and switch between wallpapers (15 s).
-- [Downloading a wallpaper](docs/videos/descargar.mp4): browse MoeWalls from the
-  "Descargar" tab and download one with its progress bar (30 s).
-- [Turning the desktop icons off and on](docs/videos/iconos.mp4): the "Mostrar
-  iconos del escritorio" switch in the settings (12 s).
+**Changing the wallpaper** ([mp4](docs/videos/cambiar-wallpaper.mp4)):
+
+![Changing the wallpaper](docs/videos/cambiar-wallpaper.gif)
+
+**Downloading a wallpaper** ([mp4](docs/videos/descargar.mp4)):
+
+![Downloading a wallpaper](docs/videos/descargar.gif)
+
+**Applying the downloaded wallpaper** ([mp4](docs/videos/wallpaper-descargado.mp4)):
+
+![Applying the downloaded wallpaper](docs/videos/wallpaper-descargado.gif)
+
+**Turning the desktop icons off and on** ([mp4](docs/videos/iconos.mp4)):
+
+![Toggling the desktop icons](docs/videos/iconos.gif)
 
 The desktop icons shown are sample launchers, not real ones. The wallpapers are
 third-party artwork used only to demonstrate the app; they are not included in
