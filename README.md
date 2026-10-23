@@ -172,3 +172,10 @@ session controls or a terminal.
 - The graphical interface provides video selection, fit mode, audio, icon size,
   and start/stop controls; it does not yet include a video preview or playlist.
 - Transparent icons require the XFCE compositor to be enabled.
+
+## License
+
+Released under the [PolyForm Noncommercial License 1.0.0](LICENSE.md): you can
+use, modify and share the code for any non-commercial purpose, but you may not
+use it to make money. Note that this is a source-available license, not an
+OSI-approved open-source one.
