@@ -172,3 +172,7 @@ session controls or a terminal.
 - The graphical interface provides video selection, fit mode, audio, icon size,
   and start/stop controls; it does not yet include a video preview or playlist.
 - Transparent icons require the XFCE compositor to be enabled.
+
+## License
+
+[MIT](LICENSE): you can use, modify and share the code freely.
