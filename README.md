@@ -19,6 +19,19 @@ It uses GTK 3 to create windows stacked just above the desktop and embeds
 
 ![Train wallpaper with the icon layer](docs/desktop-train.png)
 
+### Demo videos
+
+Short clips recorded on the real desktop (no audio; personal details such as the
+taskbar and folder paths are cropped or blurred, and the thumbnail of the
+downloaded wallpaper is blurred):
+
+- [Changing the wallpaper](docs/videos/cambiar-wallpaper.mp4): pick a video from
+  the library and switch between wallpapers (15 s).
+- [Downloading a wallpaper](docs/videos/descargar.mp4): browse MoeWalls from the
+  "Descargar" tab and download one with its progress bar (30 s).
+- [Turning the desktop icons off and on](docs/videos/iconos.mp4): the "Mostrar
+  iconos del escritorio" switch in the settings (12 s).
+
 The desktop icons shown are sample launchers, not real ones. The wallpapers are
 third-party artwork used only to demonstrate the app; they are not included in
 this repository.
