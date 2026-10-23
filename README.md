@@ -49,6 +49,53 @@ It has only been tested on **Linux Mint XFCE (X11)**. Other X11 desktops have
 not been tested, and window stacking differs between window managers, so the
 result may vary there. Wayland is not supported.
 
+## How it works
+
+1. **Video.** For each monitor (or one area when monitors are mirrored) Xalive
+   creates a borderless GTK window and embeds an `mpv` process in it. mpv
+   decodes the video with hardware acceleration when available. Each area is
+   controlled through mpv's IPC socket (pause/resume).
+2. **Stacking.** The windows are placed right above the desktop window of
+   `xfdesktop` (found with `wmctrl`) and below every other window, so the video
+   behaves like a wallpaper.
+3. **Icons.** `xfdesktop` would paint over the video, so Xalive switches its
+   icon style off through `xfconf-query` and draws its own transparent layer
+   with the contents of your Desktop folder (names, icons, double click to
+   open). Icons snap to a grid based on their size and their positions are
+   saved. The original style is restored when the wallpaper stops. This layer
+   can be turned off in the settings.
+4. **Pausing.** Every second it looks at the topmost windows
+   (`_NET_CLIENT_LIST_STACKING`). If one is maximized or fullscreen on the
+   current workspace, mpv is paused and the CPU use drops to almost zero.
+5. **Screens.** xrandr is used to list outputs and change resolutions (with a
+   10 second confirmation and automatic revert). When the layout changes, the
+   wallpaper rebuilds itself. Each monitor can have its own video.
+6. **Resilience.** If `xfdesktop` crashes, Xalive starts it again and rebuilds
+   the icon layer.
+7. **Interface.** The GTK window (library, download browser with WebKitGTK,
+   settings) saves everything in `~/.config/xalive/settings.json`.
+
+## Comparison with other projects
+
+| | Xalive Wallpaper | [Hidamari](https://github.com/jeffshee/hidamari) | [Komorebi](https://github.com/cheesecakeufo/komorebi) |
+|---|---|---|---|
+| Packaging | plain Python script, no Flatpak | Flatpak (Flathub) | distribution packages |
+| Display server | X11 only | X11 and GNOME Wayland | X11 |
+| Desktops tested | XFCE (Linux Mint) | several, GNOME focused | several |
+| Video backend | mpv | VLC or mpv | GStreamer |
+| Web page wallpapers | no | yes | no |
+| Own desktop icons | yes, resizable, grid snapping (XFCE) | no | desktop widgets |
+| Per-monitor videos and resolution | yes | multi-monitor support | limited |
+| Pause when a window is maximized | yes | yes (X11) | no |
+| Built-in wallpaper downloader | yes | no | no |
+| Maintenance | hobby project, AI-assisted | actively maintained | little recent development |
+
+The table is a summary based on each project's public description and may be
+out of date; check their pages for current details. Xalive is a much smaller
+project: it exists because I wanted something native, without Flatpak, working
+on X11 with XFCE icons. If you need Wayland, web wallpapers or a mature
+project, use Hidamari.
+
 ## Requirements
 
 On Linux Mint, install the system packages:
