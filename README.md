@@ -25,19 +25,19 @@ Short clips recorded on the real desktop (no audio). The taskbar is cropped and
 the folder path is blurred. Each one also has an `.mp4` version in
 [`docs/videos`](docs/videos).
 
-**Changing the wallpaper** ([mp4](docs/videos/cambiar-wallpaper.mp4)):
+**Changing the wallpaper** (docs/videos/cambiar-wallpaper.mp4):
 
 ![Changing the wallpaper](docs/videos/cambiar-wallpaper.gif)
 
-**Downloading a wallpaper** ([mp4](docs/videos/descargar.mp4)):
+**Downloading a wallpaper** (docs/videos/descargar.mp4)):
 
 ![Downloading a wallpaper](docs/videos/descargar.gif)
 
-**Applying the downloaded wallpaper** ([mp4](docs/videos/wallpaper-descargado.mp4)):
+**Applying the downloaded wallpaper** (docs/videos/wallpaper-descargado.mp4):
 
 ![Applying the downloaded wallpaper](docs/videos/wallpaper-descargado.gif)
 
-**Turning the desktop icons off and on** ([mp4](docs/videos/iconos.mp4)):
+**Turning the desktop icons off and on** (docs/videos/iconos.mp4):
 
 ![Toggling the desktop icons](docs/videos/iconos.gif)
 
