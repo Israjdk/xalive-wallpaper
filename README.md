@@ -90,8 +90,10 @@ The wallpaper adapts on its own to each monitor: if the screen resolution
 changes or a monitor is plugged in or removed, the video and icon layer are
 rebuilt to match. Mirrored monitors share a single player. The **Monitores**
 section of the Settings tab lists every connected monitor with its available
-resolutions (`xrandr` modes); choosing one applies it with a 10-second
-confirmation that reverts automatically, and is restored on the next start.
+resolutions (`xrandr` modes) and a video picker, so each monitor can play its
+own wallpaper (monitors without one use the main video; mirrored monitors
+share one player, and only the first player has sound). Choosing a resolution applies it with a
+10-second confirmation that reverts automatically, and is restored on the next start.
 "Automática" leaves the resolution to the system. A lower resolution also
 reduces GPU load.
 

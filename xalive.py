@@ -139,6 +139,7 @@ class WallpaperPreferences:
             "last_fit": "cover",
             "last_audio": False,
             "monitor_modes": {},
+            "monitor_videos": {},
         }
         try:
             saved = json.loads(self.path.read_text(encoding="utf-8"))
@@ -173,6 +174,13 @@ class WallpaperPreferences:
                     if isinstance(name, str)
                     and isinstance(mode, str)
                     and MODE_PATTERN.fullmatch(mode)
+                }
+            videos = saved.get("monitor_videos")
+            if isinstance(videos, dict):
+                self.data["monitor_videos"] = {
+                    name: path
+                    for name, path in videos.items()
+                    if isinstance(name, str) and isinstance(path, str) and path
                 }
             if isinstance(saved.get("pause_on_activity"), bool):
                 self.data["pause_on_activity"] = saved["pause_on_activity"]
@@ -1059,15 +1067,23 @@ class WallpaperController:
         self.pause_on_activity = preferences.data["pause_on_activity"]
         self.exceptions = preferences.data["pause_exceptions"]
         try:
-            mirrored = set()
+            # Mirrored monitors share one area, so they share one player.
+            areas = {}
             for monitor_index in range(self.display.get_n_monitors()):
                 monitor = self.display.get_monitor(monitor_index)
                 geometry = monitor.get_geometry()
                 area = (geometry.x, geometry.y, geometry.width, geometry.height)
-                # Mirrored monitors share one area; one player is enough.
-                if area in mirrored:
-                    continue
-                mirrored.add(area)
+                areas.setdefault(area, []).append(monitor.get_model())
+            monitor_videos = preferences.data["monitor_videos"]
+            for area, names in areas.items():
+                geometry = self.Gdk.Rectangle()
+                geometry.x, geometry.y, geometry.width, geometry.height = area
+                area_video = video
+                for name in names:
+                    custom = Path(monitor_videos.get(name, "")).expanduser()
+                    if name in monitor_videos and custom.is_file():
+                        area_video = custom.resolve()
+                        break
                 index = len(self.windows)
                 window = self.Gtk.Window(type=self.Gtk.WindowType.TOPLEVEL)
                 window.set_title("Xalive Wallpaper Video")
@@ -1111,11 +1127,12 @@ class WallpaperController:
                     "--input-ipc-server=" + str(self.socket_path(index)),
                     "--wid=" + str(xwindow.get_xid()),
                 ]
-                if not audio:
+                # Only the first player makes sound so videos don't talk over each other.
+                if not audio or index > 0:
                     command.append("--no-audio")
                 if fit == "cover":
                     command.append("--panscan=1.0")
-                command.append(str(video))
+                command.append(str(area_video))
                 self.players.append(subprocess.Popen(command))
 
             if not self.windows:
@@ -2201,9 +2218,9 @@ class WallpaperApp:
         self.file_label.set_text(self.video.name)
         self.file_label.set_tooltip_text(str(self.video))
 
-    def choose_video(self, *_args):
+    def pick_video_file(self, title, current=None):
         dialog = self.Gtk.FileChooserDialog(
-            title="Seleccionar video",
+            title=title,
             parent=self.window,
             action=self.Gtk.FileChooserAction.OPEN,
         )
@@ -2236,13 +2253,43 @@ class WallpaperApp:
         all_filter.set_name("Todos los archivos")
         all_filter.add_pattern("*")
         dialog.add_filter(all_filter)
-        if self.video is not None:
-            dialog.set_filename(str(self.video))
+        if current is not None:
+            dialog.set_filename(str(current))
+        chosen = None
         if dialog.run() == self.Gtk.ResponseType.ACCEPT:
-            self.video = Path(dialog.get_filename())
+            chosen = Path(dialog.get_filename())
+        dialog.destroy()
+        return chosen
+
+    def choose_video(self, *_args):
+        chosen = self.pick_video_file("Seleccionar video", self.video)
+        if chosen is not None:
+            self.video = chosen
             self.update_selected_video()
             self.status.set_text("")
-        dialog.destroy()
+
+    def choose_monitor_video(self, _button, name):
+        videos = self.preferences.data["monitor_videos"]
+        current = videos.get(name)
+        chosen = self.pick_video_file(
+            f"Video para {name}", Path(current) if current else self.video
+        )
+        if chosen is None:
+            return
+        videos[name] = str(chosen)
+        self.after_monitor_video_change(f"{name}: {chosen.name}")
+
+    def clear_monitor_video(self, _button, name):
+        if self.preferences.data["monitor_videos"].pop(name, None) is None:
+            return
+        self.after_monitor_video_change(f"{name}: usa el video general.")
+
+    def after_monitor_video_change(self, message):
+        self.preferences.save()
+        self.status.set_text(message)
+        self.GLib.idle_add(self.reload_monitors)
+        if self.controller.running:
+            self.GLib.idle_add(self.controller.restart)
 
     def apply_wallpaper(self, *_args, quiet=False):
         if self.video is None:
@@ -2343,9 +2390,12 @@ class WallpaperApp:
             self.monitors_grid.remove(child)
         saved = self.preferences.data["monitor_modes"]
         outputs = query_outputs()
-        for row, output in enumerate(outputs):
-            current = (output["mode"] or "?").replace("x", "×")
-            label = Gtk.Label(label=f"{output['name']}  (ahora {current})", xalign=0)
+        videos = self.preferences.data["monitor_videos"]
+        for number, output in enumerate(outputs):
+            row = number * 2
+            name = output["name"]
+            current = (output["mode"] or "?").replace("x", "×", 1)
+            label = Gtk.Label(label=f"{name}  (ahora {current})", xalign=0)
             label.set_hexpand(True)
             self.monitors_grid.attach(label, 0, row, 1, 1)
             combo = Gtk.ComboBoxText()
@@ -2359,19 +2409,39 @@ class WallpaperApp:
                 if mode == output["preferred"]:
                     text += " (recomendada)"
                 combo.append(mode, text)
-            wanted = saved.get(output["name"])
+            wanted = saved.get(name)
             combo.set_active_id(wanted if wanted in output["modes"] else "auto")
-            combo.connect(
-                "changed", self.on_monitor_mode_changed, output["name"], output["mode"]
-            )
+            combo.connect("changed", self.on_monitor_mode_changed, name, output["mode"])
             self.monitors_grid.attach(combo, 1, row, 1, 1)
+
+            custom = videos.get(name)
+            video_label = Gtk.Label(
+                label=f"Video: {Path(custom).name}" if custom else "Video: el general",
+                xalign=0,
+            )
+            video_label.set_ellipsize(self.Pango.EllipsizeMode.MIDDLE)
+            if custom:
+                video_label.set_tooltip_text(custom)
+            self.monitors_grid.attach(video_label, 0, row + 1, 1, 1)
+            buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            buttons.set_halign(Gtk.Align.END)
+            choose = Gtk.Button(label="Elegir video…")
+            choose.connect("clicked", self.choose_monitor_video, name)
+            buttons.pack_start(choose, False, False, 0)
+            if custom:
+                clear = Gtk.Button(label="Usar el general")
+                clear.connect("clicked", self.clear_monitor_video, name)
+                buttons.pack_start(clear, False, False, 0)
+            self.monitors_grid.attach(buttons, 1, row + 1, 1, 1)
         note = Gtk.Label(
-            label="El fondo se adapta solo a la resolución de cada monitor. "
-            "Una resolución menor también reduce la carga de la GPU.",
+            label="Cada monitor puede tener su propio video; sin elegir uno usa el "
+            "general. Los monitores en espejo comparten un solo video. El fondo se "
+            "adapta solo a la resolución, y una resolución menor reduce la carga "
+            "de la GPU.",
             xalign=0,
         )
         note.set_line_wrap(True)
-        self.monitors_grid.attach(note, 0, len(outputs), 2, 1)
+        self.monitors_grid.attach(note, 0, len(outputs) * 2, 2, 1)
         self.monitors_grid.show_all()
 
     def on_monitor_mode_changed(self, combo, name, previous_mode):
