@@ -1528,7 +1528,7 @@ class WallpaperApp:
 
         self.notebook = Gtk.Notebook()
         root.pack_start(self.notebook, True, True, 0)
-        settings_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        settings_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=22)
         settings_box.set_border_width(12)
         settings_scroll = Gtk.ScrolledWindow()
         settings_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -1537,39 +1537,71 @@ class WallpaperApp:
         self.notebook.append_page(settings_scroll, Gtk.Label(label=tr("Ajustes")))
         self.build_browser_tab()
 
-        options_frame = Gtk.Frame(label=tr(" Opciones "))
-        options = Gtk.Grid(column_spacing=18, row_spacing=14)
-        options.set_border_width(14)
-        options_frame.add(options)
-        fit_label = Gtk.Label(label=tr("Ajuste a pantalla"))
-        fit_label.set_xalign(0)
-        options.attach(fit_label, 0, 0, 1, 1)
+        def section(title, hint=None):
+            header = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            title_label = Gtk.Label(xalign=0)
+            title_label.set_markup(f"<b>{self.GLib.markup_escape_text(title)}</b>")
+            header.pack_start(title_label, False, False, 0)
+            if hint:
+                hint_label = Gtk.Label(label=hint, xalign=0)
+                hint_label.get_style_context().add_class("dim-label")
+                header.pack_start(hint_label, False, False, 0)
+            header.pack_start(Gtk.Separator(), False, False, 4)
+            grid = Gtk.Grid(column_spacing=18, row_spacing=12)
+            grid.set_margin_start(6)
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            box.pack_start(header, False, False, 0)
+            box.pack_start(grid, False, False, 0)
+            settings_box.pack_start(box, False, False, 0)
+            return grid
+
+        def row(grid, index, text, widget, hint=None):
+            label_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+            label = Gtk.Label(label=text, xalign=0)
+            label.set_line_wrap(True)
+            label_box.pack_start(label, False, False, 0)
+            if hint:
+                hint_label = Gtk.Label(label=hint, xalign=0)
+                hint_label.set_line_wrap(True)
+                hint_label.get_style_context().add_class("dim-label")
+                label_box.pack_start(hint_label, False, False, 0)
+            label_box.set_hexpand(True)
+            label_box.set_valign(Gtk.Align.CENTER)
+            widget.set_halign(Gtk.Align.END)
+            widget.set_valign(Gtk.Align.CENTER)
+            grid.attach(label_box, 0, index, 1, 1)
+            grid.attach(widget, 1, index, 1, 1)
+
+        def switch(active, handler=None):
+            toggle = Gtk.Switch()
+            toggle.set_active(active)
+            if handler is not None:
+                toggle.connect("notify::active", handler)
+            return toggle
+
+        playback = section(tr("Reproducción"))
         self.fit_combo = Gtk.ComboBoxText()
         self.fit_combo.append("cover", tr("Cubrir (recorta los bordes)"))
         self.fit_combo.append("contain", tr("Contener (puede dejar márgenes)"))
         self.fit_combo.set_active_id(preferences.data["last_fit"])
-        options.attach(self.fit_combo, 1, 0, 1, 1)
-        self.audio_switch = Gtk.Switch()
-        self.audio_switch.set_halign(Gtk.Align.START)
-        self.audio_switch.set_active(preferences.data["last_audio"])
-        options.attach(Gtk.Label(label=tr("Reproducir audio")), 0, 1, 1, 1)
-        options.attach(self.audio_switch, 1, 1, 1, 1)
-        self.pause_switch = Gtk.Switch()
-        self.pause_switch.set_halign(Gtk.Align.START)
-        self.pause_switch.set_active(preferences.data["pause_on_activity"])
-        self.pause_switch.connect("notify::active", self.on_pause_switch_changed)
-        pause_label = Gtk.Label(label=tr("Pausar con ventanas maximizadas o a pantalla completa"))
-        pause_label.set_xalign(0)
-        options.attach(pause_label, 0, 2, 1, 1)
-        options.attach(self.pause_switch, 1, 2, 1, 1)
-        self.icons_switch = Gtk.Switch()
-        self.icons_switch.set_halign(Gtk.Align.START)
-        self.icons_switch.set_active(preferences.data["show_icons"])
-        self.icons_switch.connect("notify::active", self.on_icons_switch_changed)
-        options.attach(Gtk.Label(label=tr("Mostrar iconos del escritorio"), xalign=0), 0, 3, 1, 1)
-        options.attach(self.icons_switch, 1, 3, 1, 1)
-        options.attach(Gtk.Label(label=tr("Tamaño de los iconos")), 0, 4, 1, 1)
-        size_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        row(playback, 0, tr("Ajuste a pantalla"), self.fit_combo)
+        self.audio_switch = switch(preferences.data["last_audio"])
+        row(playback, 1, tr("Reproducir audio"), self.audio_switch)
+        self.pause_switch = switch(
+            preferences.data["pause_on_activity"], self.on_pause_switch_changed
+        )
+        row(
+            playback,
+            2,
+            tr("Pausar con ventanas maximizadas"),
+            self.pause_switch,
+            tr("También con ventanas a pantalla completa; ahorra CPU y batería."),
+        )
+
+        desktop = section(tr("Escritorio"))
+        self.icons_switch = switch(preferences.data["show_icons"], self.on_icons_switch_changed)
+        row(desktop, 0, tr("Mostrar iconos del escritorio"), self.icons_switch)
+        size_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         self.icon_size_scale = Gtk.Scale.new_with_range(
             Gtk.Orientation.HORIZONTAL,
             ICON_SIZE_MIN,
@@ -1577,62 +1609,54 @@ class WallpaperApp:
             8,
         )
         self.icon_size_scale.set_digits(0)
-        self.icon_size_scale.set_hexpand(True)
+        self.icon_size_scale.set_size_request(220, -1)
         self.icon_size_scale.set_value(self.icon_size)
         self.icon_size_scale.connect("value-changed", self.on_icon_size_changed)
         size_box.pack_start(self.icon_size_scale, True, True, 0)
         range_labels = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        range_labels.pack_start(
-            Gtk.Label(label=tr("Pequeño ({size} px)", size=ICON_SIZE_MIN)),
-            False,
-            False,
-            0,
-        )
-        range_labels.pack_end(
-            Gtk.Label(label=tr("Grande ({size} px)", size=ICON_SIZE_MAX)),
-            False,
-            False,
-            0,
-        )
+        for text, pack in (
+            (tr("Pequeño ({size} px)", size=ICON_SIZE_MIN), range_labels.pack_start),
+            (tr("Grande ({size} px)", size=ICON_SIZE_MAX), range_labels.pack_end),
+        ):
+            small = Gtk.Label(label=text)
+            small.get_style_context().add_class("dim-label")
+            pack(small, False, False, 0)
         size_box.pack_start(range_labels, False, False, 0)
-        options.attach(size_box, 1, 4, 1, 1)
+        row(desktop, 1, tr("Tamaño de los iconos"), size_box)
         size_box.set_sensitive(preferences.data["show_icons"])
         self.icon_size_box = size_box
-        self.restore_switch = Gtk.Switch()
-        self.restore_switch.set_halign(Gtk.Align.START)
-        self.restore_switch.set_active(preferences.data["restore_last"])
-        self.restore_switch.connect("notify::active", self.on_restore_switch_changed)
-        options.attach(Gtk.Label(label=tr("Recordar el último fondo al abrir"), xalign=0), 0, 5, 1, 1)
-        options.attach(self.restore_switch, 1, 5, 1, 1)
-        self.autostart_switch = Gtk.Switch()
-        self.autostart_switch.set_halign(Gtk.Align.START)
-        self.autostart_switch.set_active(autostart_enabled())
-        self.autostart_switch.connect("notify::active", self.on_autostart_switch_changed)
-        options.attach(Gtk.Label(label=tr("Iniciar con la sesión"), xalign=0), 0, 6, 1, 1)
-        options.attach(self.autostart_switch, 1, 6, 1, 1)
+
+        general = section(tr("General"))
+        self.restore_switch = switch(
+            preferences.data["restore_last"], self.on_restore_switch_changed
+        )
+        row(general, 0, tr("Recordar el último fondo al abrir"), self.restore_switch)
+        self.autostart_switch = switch(autostart_enabled(), self.on_autostart_switch_changed)
+        row(general, 1, tr("Iniciar con la sesión"), self.autostart_switch)
         self.language_combo = Gtk.ComboBoxText()
         self.language_combo.append("auto", tr("Automático"))
         self.language_combo.append("es", tr("Español"))
         self.language_combo.append("en", tr("Inglés"))
         self.language_combo.set_active_id(preferences.data["language"])
-        self.language_combo.set_tooltip_text(tr("El idioma cambia al reiniciar Xalive Wallpaper."))
         self.language_combo.connect("changed", self.on_language_changed)
-        options.attach(Gtk.Label(label=tr("Idioma"), xalign=0), 0, 7, 1, 1)
-        options.attach(self.language_combo, 1, 7, 1, 1)
-        settings_box.pack_start(options_frame, False, False, 0)
+        row(
+            general,
+            2,
+            tr("Idioma"),
+            self.language_combo,
+            tr("El idioma cambia al reiniciar Xalive Wallpaper."),
+        )
 
-        monitors_frame = Gtk.Frame(label=tr(" Monitores "))
-        self.monitors_grid = Gtk.Grid(column_spacing=18, row_spacing=10)
-        self.monitors_grid.set_border_width(14)
-        monitors_frame.add(self.monitors_grid)
-        settings_box.pack_start(monitors_frame, False, False, 0)
+        self.monitors_grid = section(tr(" Monitores ").strip())
         self.controller.on_layout_changed = self.reload_monitors
         self.reload_monitors()
 
-        exceptions_frame = Gtk.Frame(label=tr(" Excepciones (nunca pausan el fondo) "))
+        exceptions_grid = section(
+            tr("Excepciones"), tr("Estas aplicaciones nunca pausan el fondo.")
+        )
         exceptions_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        exceptions_box.set_border_width(14)
-        exceptions_frame.add(exceptions_box)
+        exceptions_box.set_hexpand(True)
+        exceptions_grid.attach(exceptions_box, 0, 0, 1, 1)
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_min_content_height(80)
         scrolled.set_shadow_type(Gtk.ShadowType.IN)
@@ -1653,7 +1677,6 @@ class WallpaperApp:
         remove_button.connect("clicked", self.remove_exception)
         add_row.pack_start(remove_button, False, False, 0)
         exceptions_box.pack_start(add_row, False, False, 0)
-        settings_box.pack_start(exceptions_frame, False, False, 0)
         self.reload_exceptions()
 
         self.status = Gtk.Label()

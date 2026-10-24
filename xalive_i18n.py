@@ -8,6 +8,14 @@ from pathlib import Path
 LANGUAGES = ("auto", "es", "en")
 
 EN = {
+    "Reproducción": "Playback",
+    "Escritorio": "Desktop",
+    "General": "General",
+    "Monitores": "Monitors",
+    "Excepciones": "Exceptions",
+    "Pausar con ventanas maximizadas": "Pause with maximized windows",
+    "También con ventanas a pantalla completa; ahorra CPU y batería.": "Also with fullscreen windows; saves CPU and battery.",
+    "Estas aplicaciones nunca pausan el fondo.": "These applications never pause the wallpaper.",
     "Actualizar": "Refresh",
     "Workshop": "Workshop",
     "{count} wallpapers de video de Wallpaper Engine": "{count} Wallpaper Engine video wallpapers",
