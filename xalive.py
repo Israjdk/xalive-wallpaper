@@ -2628,7 +2628,7 @@ class WallpaperApp:
 
         def progress(text):
             self.GLib.idle_add(
-                self.workshop_status.set_text, tr("Descargando: {text}", text=text[:90])
+                self.workshop_status.set_text, tr("Descargando: {name}", name=text[:90])
             )
 
         def work():
@@ -2641,7 +2641,7 @@ class WallpaperApp:
                 error = str(exc)
             self.GLib.idle_add(self.finish_workshop_download, button, title, error)
 
-        self.workshop_status.set_text(tr("Descargando: {text}", text=title))
+        self.workshop_status.set_text(tr("Descargando: {name}", name=title))
         threading.Thread(target=work, daemon=True).start()
 
     def finish_workshop_download(self, button, title, error):

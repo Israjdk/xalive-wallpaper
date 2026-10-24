@@ -16,7 +16,7 @@ EN = {
     "Solo se envía a steamcmd; Xalive no la guarda.": "It is only sent to steamcmd; Xalive does not store it.",
     "Escribe el código de tu correo o de la app de Steam.": "Enter the code from your email or the Steam app.",
     "Ya hay una descarga en curso.": "A download is already in progress.",
-    "Descargando: {text}": "Downloading: {text}",
+    "Descargando: {name}": "Downloading: {name}",
     "No se pudo descargar: {error}": "Could not download: {error}",
     "Descargado: {title}. Ya está en «Suscritos».": "Downloaded: {title}. It is now in “Subscribed”.",
     "Contenido adulto": "Adult content",
