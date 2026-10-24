@@ -26,7 +26,7 @@ import xalive_workshop as workshop  # noqa: E402
 
 ICON_SIZE_MIN = 24
 ICON_SIZE_MAX = 128
-WORKSHOP_THUMB_SIZE = 96
+WORKSHOP_THUMB_SIZE = 150
 THUMB_WIDTH = 144
 GALLERY_THUMB_WIDTH = 190
 GALLERY_THUMB_HEIGHT = 107
@@ -1495,7 +1495,7 @@ class WallpaperApp:
             self.video = last if last.is_file() else None
         self.icon_size = preferences.data["icon_size"]
         self.window = Gtk.Window(title="Xalive Wallpaper")
-        self.window.set_default_size(820, 700)
+        self.window.set_default_size(900, 620)
         self.window.set_border_width(0)
         self.window.set_position(Gtk.WindowPosition.CENTER)
         self.window.connect("delete-event", self.on_close)
@@ -1508,28 +1508,22 @@ class WallpaperApp:
         header.set_show_close_button(True)
         self.window.set_titlebar(header)
 
-        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        root.set_border_width(16)
+        compact = Gtk.CssProvider()
+        compact.load_from_data(
+            b"button { padding: 2px 9px; min-height: 0; min-width: 0; }"
+            b" notebook tab { padding: 3px 10px; }"
+            b" entry { min-height: 0; padding: 3px 6px; }"
+            b" .thumb-title { font-size: 0.92em; }"
+        )
+        Gtk.StyleContext.add_provider_for_screen(
+            self.window.get_screen(), compact, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        root.set_border_width(8)
         self.window.add(root)
 
-        title = Gtk.Label()
-        title.set_markup(f"<big><b>{tr('Tu escritorio, en movimiento')}</b></big>")
-        title.set_xalign(0)
-        root.pack_start(title, False, False, 0)
-        self.intro_widgets = [title]
-
-        description = Gtk.Label(
-            label=tr("Elige un video y ajusta cómo se verá en tus pantallas.")
-        )
-        description.set_xalign(0)
-        description.set_line_wrap(True)
-        root.pack_start(description, False, False, 0)
-        self.intro_widgets.append(description)
-
-        file_frame = Gtk.Frame(label=tr(" Video "))
-        file_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        file_box.set_border_width(14)
-        file_frame.add(file_box)
+        file_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.file_label = Gtk.Label()
         self.file_label.set_xalign(0)
         self.file_label.set_ellipsize(Pango.EllipsizeMode.END)
@@ -1539,12 +1533,12 @@ class WallpaperApp:
         choose_button = Gtk.Button(label=tr("Elegir video…"))
         choose_button.connect("clicked", self.choose_video)
         file_box.pack_start(choose_button, False, False, 0)
-        root.pack_start(file_frame, False, False, 0)
+        root.pack_start(file_box, False, False, 0)
 
         self.notebook = Gtk.Notebook()
         root.pack_start(self.notebook, True, True, 0)
-        settings_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=22)
-        settings_box.set_border_width(12)
+        settings_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        settings_box.set_border_width(8)
         settings_scroll = Gtk.ScrolledWindow()
         settings_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         settings_scroll.add(settings_box)
@@ -1562,7 +1556,7 @@ class WallpaperApp:
                 hint_label.get_style_context().add_class("dim-label")
                 header.pack_start(hint_label, False, False, 0)
             header.pack_start(Gtk.Separator(), False, False, 4)
-            grid = Gtk.Grid(column_spacing=18, row_spacing=12)
+            grid = Gtk.Grid(column_spacing=14, row_spacing=7)
             grid.set_margin_start(6)
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
             box.pack_start(header, False, False, 0)
@@ -1715,19 +1709,22 @@ class WallpaperApp:
             tr("Arrastra los iconos para moverlos por la cuadrícula; "
             "tamaño y posiciones se guardan.")
         )
-        root.pack_start(self.status, False, False, 0)
+        self.status.set_line_wrap(False)
+        self.status.set_ellipsize(Pango.EllipsizeMode.END)
+        self.status.set_hexpand(True)
+        bottom = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        bottom.pack_start(self.status, True, True, 0)
+        root.pack_end(bottom, False, False, 0)
 
-        actions = Gtk.ButtonBox(orientation=Gtk.Orientation.HORIZONTAL)
-        actions.set_layout(Gtk.ButtonBoxStyle.END)
-        actions.set_spacing(10)
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self.stop_button = Gtk.Button(label=tr("Detener fondo"))
         self.stop_button.connect("clicked", self.stop_wallpaper)
-        actions.add(self.stop_button)
+        actions.pack_start(self.stop_button, False, False, 0)
         self.apply_button = Gtk.Button(label=tr("Aplicar fondo"))
         self.apply_button.get_style_context().add_class("suggested-action")
         self.apply_button.connect("clicked", self.apply_wallpaper)
-        actions.add(self.apply_button)
-        root.pack_end(actions, False, False, 0)
+        actions.pack_start(self.apply_button, False, False, 0)
+        bottom.pack_end(actions, False, False, 0)
 
         self.update_selected_video()
         self.update_running_state()
@@ -1750,7 +1747,7 @@ class WallpaperApp:
         self.thumb_pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
         self.browser_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        self.browser_box.set_border_width(8)
+        self.browser_box.set_border_width(4)
         self.stack = Gtk.Stack()
         switcher = Gtk.StackSwitcher()
         switcher.set_stack(self.stack)
@@ -1800,9 +1797,10 @@ class WallpaperApp:
         self.gallery_flow.set_selection_mode(Gtk.SelectionMode.NONE)
         self.gallery_flow.set_homogeneous(True)
         self.gallery_flow.set_min_children_per_line(2)
-        self.gallery_flow.set_max_children_per_line(4)
-        self.gallery_flow.set_row_spacing(10)
-        self.gallery_flow.set_column_spacing(10)
+        self.gallery_flow.set_valign(Gtk.Align.START)
+        self.gallery_flow.set_max_children_per_line(6)
+        self.gallery_flow.set_row_spacing(4)
+        self.gallery_flow.set_column_spacing(4)
         gallery_inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         gallery_inner.pack_start(self.gallery_flow, False, False, 0)
         self.more_button = Gtk.Button(label=tr("Cargar más"))
@@ -2252,8 +2250,8 @@ class WallpaperApp:
 
     def build_library_tab(self):
         Gtk = self.Gtk
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        box.set_border_width(12)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        box.set_border_width(6)
         folder_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.folder_label = Gtk.Label()
         self.folder_label.set_xalign(0)
@@ -2271,10 +2269,11 @@ class WallpaperApp:
         self.library_flow = Gtk.FlowBox()
         self.library_flow.set_selection_mode(Gtk.SelectionMode.SINGLE)
         self.library_flow.set_homogeneous(True)
-        self.library_flow.set_max_children_per_line(4)
+        self.library_flow.set_valign(Gtk.Align.START)
+        self.library_flow.set_max_children_per_line(6)
         self.library_flow.set_min_children_per_line(2)
-        self.library_flow.set_row_spacing(8)
-        self.library_flow.set_column_spacing(8)
+        self.library_flow.set_row_spacing(4)
+        self.library_flow.set_column_spacing(4)
         self.library_flow.connect("child-activated", self.on_library_selected)
         self.library_flow.connect("selected-children-changed", self.on_library_selected)
         scroll.add(self.library_flow)
@@ -2287,7 +2286,7 @@ class WallpaperApp:
     def build_workshop_tab(self):
         Gtk = self.Gtk
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        box.set_border_width(12)
+        box.set_border_width(6)
         self.workshop_stack = Gtk.Stack()
         switcher = Gtk.StackSwitcher()
         switcher.set_stack(self.workshop_stack)
@@ -2321,10 +2320,10 @@ class WallpaperApp:
         self.workshop_flow.set_selection_mode(Gtk.SelectionMode.SINGLE)
         self.workshop_flow.set_homogeneous(True)
         self.workshop_flow.set_valign(Gtk.Align.START)
-        self.workshop_flow.set_max_children_per_line(4)
+        self.workshop_flow.set_max_children_per_line(6)
         self.workshop_flow.set_min_children_per_line(2)
-        self.workshop_flow.set_row_spacing(8)
-        self.workshop_flow.set_column_spacing(8)
+        self.workshop_flow.set_row_spacing(4)
+        self.workshop_flow.set_column_spacing(4)
         self.workshop_flow.connect("child-activated", self.on_library_selected)
         self.workshop_flow.connect("selected-children-changed", self.on_library_selected)
         scroll.add(self.workshop_flow)
@@ -2332,14 +2331,7 @@ class WallpaperApp:
         self.workshop_stack.add_titled(installed, "installed", tr("Suscritos"))
         self.build_workshop_search_page()
         self.notebook.insert_page(box, Gtk.Label(label=tr("Workshop")), 1)
-        self.workshop_page = box
-        self.notebook.connect("switch-page", self.on_tab_for_intro)
         self.reload_workshop()
-
-    def on_tab_for_intro(self, _notebook, page, _number):
-        # The Workshop browser needs the room more than the intro text does.
-        for widget in self.intro_widgets:
-            widget.set_visible(page is not self.workshop_page)
 
     def build_workshop_search_page(self):
         Gtk = self.Gtk
@@ -2397,10 +2389,11 @@ class WallpaperApp:
         self.workshop_results = Gtk.FlowBox()
         self.workshop_results.set_selection_mode(Gtk.SelectionMode.NONE)
         self.workshop_results.set_homogeneous(True)
-        self.workshop_results.set_max_children_per_line(4)
+        self.workshop_results.set_max_children_per_line(8)
         self.workshop_results.set_min_children_per_line(2)
-        self.workshop_results.set_row_spacing(8)
-        self.workshop_results.set_column_spacing(8)
+        self.workshop_results.set_valign(Gtk.Align.START)
+        self.workshop_results.set_row_spacing(4)
+        self.workshop_results.set_column_spacing(4)
         scroll.add(self.workshop_results)
         self.workshop_search_box.pack_start(scroll, True, True, 0)
         self.workshop_more = Gtk.Button(label=tr("Cargar más"))
@@ -2524,29 +2517,30 @@ class WallpaperApp:
 
     def create_workshop_card(self, item, generation):
         Gtk = self.Gtk
-        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        card.set_border_width(4)
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        card.set_border_width(2)
         image = Gtk.Image.new_from_icon_name("video-x-generic", Gtk.IconSize.DIALOG)
         image.set_size_request(WORKSHOP_THUMB_SIZE, WORKSHOP_THUMB_SIZE)
         card.pack_start(image, False, False, 0)
         title = Gtk.Label(label=item["title"])
-        title.set_max_width_chars(20)
+        title.get_style_context().add_class("thumb-title")
+        title.set_xalign(0)
+        title.set_max_width_chars(18)
         title.set_ellipsize(self.Pango.EllipsizeMode.END)
         title.set_tooltip_text(item["title"])
         card.pack_start(title, False, False, 0)
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        row.set_halign(Gtk.Align.CENTER)
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         detail = Gtk.Label(label=f"★ {item['subscriptions']:,}")
         detail.get_style_context().add_class("dim-label")
-        row.pack_start(detail, False, False, 0)
+        row.pack_start(detail, True, True, 0)
+        detail.set_xalign(0)
         if self.preferences.data["steam_user"]:
-            download = Gtk.Button(label=tr("Descargar"))
+            download = Gtk.Button(label="⬇")
+            download.set_tooltip_text(tr("Descargar"))
             download.connect("clicked", self.on_download_workshop_item, item)
             row.pack_start(download, False, False, 0)
-            button = Gtk.Button(label="↗")
-            button.set_tooltip_text(tr("Abrir en Steam"))
-        else:
-            button = Gtk.Button(label=tr("Abrir en Steam"))
+        button = Gtk.Button(label="↗")
+        button.set_tooltip_text(tr("Abrir en Steam"))
         button.connect("clicked", self.on_open_workshop_item, item["id"])
         row.pack_start(button, False, False, 0)
         card.pack_start(row, False, False, 0)
