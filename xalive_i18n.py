@@ -8,6 +8,10 @@ from pathlib import Path
 LANGUAGES = ("auto", "es", "en")
 
 EN = {
+    "Actualizar": "Refresh",
+    "Workshop": "Workshop",
+    "{count} wallpapers de video de Wallpaper Engine": "{count} Wallpaper Engine video wallpapers",
+    "No hay wallpapers de video. Instala Wallpaper Engine en Steam, suscríbete a algunos en su Workshop y pulsa Actualizar.": "No video wallpapers found. Install Wallpaper Engine on Steam, subscribe to some in its Workshop and press Refresh.",
     "Crear carpeta": "Create folder",
     "Crear documento vacío": "Create empty document",
     "Abrir terminal": "Open terminal",

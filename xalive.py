@@ -2228,8 +2228,41 @@ class WallpaperApp:
         scroll.add(self.library_flow)
         box.pack_start(scroll, True, True, 0)
         self.notebook.insert_page(box, Gtk.Label(label=tr("Biblioteca")), 0)
-        self.library_generation = 0
+        self.generations = {"library": 0, "workshop": 0}
         self.reload_library()
+        self.build_workshop_tab()
+
+    def build_workshop_tab(self):
+        Gtk = self.Gtk
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        box.set_border_width(12)
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.workshop_label = Gtk.Label()
+        self.workshop_label.set_xalign(0)
+        self.workshop_label.set_hexpand(True)
+        self.workshop_label.set_line_wrap(True)
+        row.pack_start(self.workshop_label, True, True, 0)
+        refresh_button = Gtk.Button(label=tr("Actualizar"))
+        refresh_button.connect("clicked", lambda *_: self.reload_workshop())
+        row.pack_start(refresh_button, False, False, 0)
+        box.pack_start(row, False, False, 0)
+
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_min_content_height(190)
+        self.workshop_flow = Gtk.FlowBox()
+        self.workshop_flow.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self.workshop_flow.set_homogeneous(True)
+        self.workshop_flow.set_max_children_per_line(4)
+        self.workshop_flow.set_min_children_per_line(2)
+        self.workshop_flow.set_row_spacing(8)
+        self.workshop_flow.set_column_spacing(8)
+        self.workshop_flow.connect("child-activated", self.on_library_selected)
+        self.workshop_flow.connect("selected-children-changed", self.on_library_selected)
+        scroll.add(self.workshop_flow)
+        box.pack_start(scroll, True, True, 0)
+        self.notebook.insert_page(box, Gtk.Label(label=tr("Workshop")), 1)
+        self.reload_workshop()
 
     def choose_folder(self, *_args):
         dialog = self.Gtk.FileChooserDialog(
@@ -2253,9 +2286,6 @@ class WallpaperApp:
         dialog.destroy()
 
     def reload_library(self):
-        for child in self.library_flow.get_children():
-            self.library_flow.remove(child)
-        self.library_generation += 1
         folder = self.preferences.data["library_folder"]
         entries = []
         if folder and Path(folder).is_dir():
@@ -2270,13 +2300,31 @@ class WallpaperApp:
                 ]
             except OSError as error:
                 self.folder_label.set_text(tr("No se pudo leer la carpeta: {error}", error=error))
-                return
         else:
             self.folder_label.set_text(tr("Ninguna carpeta seleccionada"))
-        entries.extend(
-            (video, f"{title} (Workshop)", f"{title}\n{video}")
-            for title, video in workshop.workshop_videos()
-        )
+        self.fill_flow("library", self.library_flow, entries)
+
+    def reload_workshop(self):
+        entries = [
+            (video, title, f"{title}\n{video}") for title, video in workshop.workshop_videos()
+        ]
+        if entries:
+            self.workshop_label.set_text(
+                tr("{count} wallpapers de video de Wallpaper Engine", count=len(entries))
+            )
+        else:
+            self.workshop_label.set_text(
+                tr(
+                    "No hay wallpapers de video. Instala Wallpaper Engine en Steam, "
+                    "suscríbete a algunos en su Workshop y pulsa Actualizar."
+                )
+            )
+        self.fill_flow("workshop", self.workshop_flow, entries)
+
+    def fill_flow(self, key, flow, entries):
+        for child in flow.get_children():
+            flow.remove(child)
+        self.generations[key] += 1
         items = []
         for video, text, tooltip in entries:
             card = self.Gtk.Box(orientation=self.Gtk.Orientation.VERTICAL, spacing=4)
@@ -2290,14 +2338,15 @@ class WallpaperApp:
             card.pack_start(label, False, False, 0)
             card.set_tooltip_text(tooltip)
             card.video_path = video
-            self.library_flow.add(card)
+            flow.add(card)
             if video == self.video:
-                self.library_flow.select_child(card.get_parent())
+                flow.select_child(card.get_parent())
             items.append((video, image))
-        self.library_flow.show_all()
-        generation = self.library_generation
+        flow.show_all()
         threading.Thread(
-            target=self.generate_thumbnails, args=(items, generation), daemon=True
+            target=self.generate_thumbnails,
+            args=(items, key, self.generations[key]),
+            daemon=True,
         ).start()
 
     def thumbnail_path(self, video):
@@ -2305,10 +2354,10 @@ class WallpaperApp:
         key = hashlib.sha1(f"{video}:{stat.st_mtime_ns}:{stat.st_size}".encode()).hexdigest()
         return THUMB_CACHE / f"{key}.jpg"
 
-    def generate_thumbnails(self, items, generation):
+    def generate_thumbnails(self, items, key, generation):
         THUMB_CACHE.mkdir(parents=True, exist_ok=True)
         for video, image in items:
-            if generation != self.library_generation:
+            if generation != self.generations[key]:
                 return
             try:
                 target = self.thumbnail_path(video)
@@ -2336,10 +2385,10 @@ class WallpaperApp:
                         shutil.copyfile(frames[0], target)
             except (OSError, subprocess.SubprocessError):
                 continue
-            self.GLib.idle_add(self.set_thumbnail, image, target, generation)
+            self.GLib.idle_add(self.set_thumbnail, image, target, key, generation)
 
-    def set_thumbnail(self, image, path, generation):
-        if generation != self.library_generation:
+    def set_thumbnail(self, image, path, key, generation):
+        if generation != self.generations[key]:
             return False
         try:
             pixbuf = self.GdkPixbuf.Pixbuf.new_from_file_at_scale(
@@ -2356,6 +2405,9 @@ class WallpaperApp:
             child = selected[0] if selected else None
         if child is None:
             return
+        for other in (self.library_flow, self.workshop_flow):
+            if other is not flow:
+                other.unselect_all()
         self.video = child.get_child().video_path
         self.update_selected_video()
 

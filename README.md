@@ -253,7 +253,8 @@ session controls or a terminal.
 ## Wallpaper Engine Workshop (video only)
 
 If you own Wallpaper Engine on Steam, video wallpapers you subscribed to in its
-Workshop show up in the Library tab, marked "(Workshop)". Xalive reads
+Workshop show up in their own **Workshop** tab (separate from your Library
+folder and the downloader). Press Refresh there after subscribing to more. Xalive reads
 `steamapps/workshop/content/431960/*/project.json` from your Steam libraries
 (native and Flatpak Steam) and lists only items whose type is `video`. Scene,
 web and application wallpapers are not supported. Xalive does not download
