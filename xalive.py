@@ -143,6 +143,8 @@ class WallpaperPreferences:
             "last_video": "",
             "last_fit": "cover",
             "last_audio": False,
+            "steam_api_key": "",
+            "workshop_mature": False,
             "monitor_modes": {},
             "monitor_videos": {},
         }
@@ -170,7 +172,10 @@ class WallpaperPreferences:
                 self.data["last_fit"] = saved["last_fit"]
             if saved.get("language") in ("auto", "es", "en"):
                 self.data["language"] = saved["language"]
-            for key in ("restore_last", "last_audio", "show_icons"):
+            key_text = saved.get("steam_api_key")
+            if isinstance(key_text, str) and re.fullmatch(r"[0-9A-Fa-f]{32}", key_text):
+                self.data["steam_api_key"] = key_text
+            for key in ("restore_last", "last_audio", "show_icons", "workshop_mature"):
                 if isinstance(saved.get(key), bool):
                     self.data[key] = saved[key]
             modes = saved.get("monitor_modes")
@@ -210,6 +215,7 @@ class WallpaperPreferences:
                 json.dumps(self.data, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
             )
+            self.path.chmod(0o600)
         except OSError as error:
             print(f"Could not save wallpaper preferences: {error}", file=sys.stderr)
 
@@ -2257,8 +2263,16 @@ class WallpaperApp:
 
     def build_workshop_tab(self):
         Gtk = self.Gtk
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         box.set_border_width(12)
+        self.workshop_stack = Gtk.Stack()
+        switcher = Gtk.StackSwitcher()
+        switcher.set_stack(self.workshop_stack)
+        switcher.set_halign(Gtk.Align.CENTER)
+        box.pack_start(switcher, False, False, 0)
+        box.pack_start(self.workshop_stack, True, True, 0)
+
+        installed = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.workshop_label = Gtk.Label()
         self.workshop_label.set_xalign(0)
@@ -2268,7 +2282,7 @@ class WallpaperApp:
         refresh_button = Gtk.Button(label=tr("Actualizar"))
         refresh_button.connect("clicked", lambda *_: self.reload_workshop())
         row.pack_start(refresh_button, False, False, 0)
-        box.pack_start(row, False, False, 0)
+        installed.pack_start(row, False, False, 0)
 
         scroll = Gtk.ScrolledWindow()
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -2283,9 +2297,236 @@ class WallpaperApp:
         self.workshop_flow.connect("child-activated", self.on_library_selected)
         self.workshop_flow.connect("selected-children-changed", self.on_library_selected)
         scroll.add(self.workshop_flow)
-        box.pack_start(scroll, True, True, 0)
+        installed.pack_start(scroll, True, True, 0)
+        self.workshop_stack.add_titled(installed, "installed", tr("Suscritos"))
+        self.build_workshop_search_page()
         self.notebook.insert_page(box, Gtk.Label(label=tr("Workshop")), 1)
         self.reload_workshop()
+
+    def build_workshop_search_page(self):
+        Gtk = self.Gtk
+        self.workshop_search_generation = 0
+        self.workshop_cursor = ""
+        self.workshop_seen = set()
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+
+        self.workshop_key_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        intro = Gtk.Label(
+            label=tr(
+                "Para buscar necesitas una clave gratuita de la API de Steam. "
+                "Se guarda solo en tu equipo."
+            ),
+            xalign=0,
+        )
+        intro.set_line_wrap(True)
+        self.workshop_key_box.pack_start(intro, False, False, 0)
+        key_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.workshop_key_entry = Gtk.Entry()
+        self.workshop_key_entry.set_placeholder_text(tr("Clave de la API de Steam"))
+        self.workshop_key_entry.set_visibility(False)
+        self.workshop_key_entry.connect("activate", self.on_save_steam_key)
+        key_row.pack_start(self.workshop_key_entry, True, True, 0)
+        save_button = Gtk.Button(label=tr("Guardar"))
+        save_button.connect("clicked", self.on_save_steam_key)
+        key_row.pack_start(save_button, False, False, 0)
+        self.workshop_key_box.pack_start(key_row, False, False, 0)
+        link = Gtk.LinkButton.new_with_label(workshop.API_KEY_URL, tr("Obtener una clave"))
+        link.set_halign(Gtk.Align.START)
+        self.workshop_key_box.pack_start(link, False, False, 0)
+        page.pack_start(self.workshop_key_box, False, False, 0)
+
+        self.workshop_search_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.workshop_entry = Gtk.SearchEntry()
+        self.workshop_entry.set_placeholder_text(tr("Buscar en el Workshop (solo video)…"))
+        self.workshop_entry.connect("activate", lambda *_: self.reload_workshop_search())
+        bar.pack_start(self.workshop_entry, True, True, 0)
+        search_button = Gtk.Button(label=tr("Buscar"))
+        search_button.connect("clicked", lambda *_: self.reload_workshop_search())
+        bar.pack_start(search_button, False, False, 0)
+        forget_button = Gtk.Button(label=tr("Cambiar clave"))
+        forget_button.connect("clicked", self.on_forget_steam_key)
+        bar.pack_start(forget_button, False, False, 0)
+        self.workshop_search_box.pack_start(bar, False, False, 0)
+
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_min_content_height(170)
+        self.workshop_results = Gtk.FlowBox()
+        self.workshop_results.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.workshop_results.set_homogeneous(True)
+        self.workshop_results.set_max_children_per_line(3)
+        self.workshop_results.set_min_children_per_line(2)
+        self.workshop_results.set_row_spacing(8)
+        self.workshop_results.set_column_spacing(8)
+        scroll.add(self.workshop_results)
+        self.workshop_search_box.pack_start(scroll, True, True, 0)
+        self.workshop_more = Gtk.Button(label=tr("Cargar más"))
+        self.workshop_more.connect("clicked", lambda *_: self.load_workshop_results())
+        self.workshop_more.set_no_show_all(True)
+        self.workshop_more.hide()
+        self.workshop_search_box.pack_start(self.workshop_more, False, False, 0)
+        page.pack_start(self.workshop_search_box, True, True, 0)
+
+        self.workshop_status = Gtk.Label(xalign=0)
+        self.workshop_status.set_line_wrap(True)
+        page.pack_start(self.workshop_status, False, False, 0)
+        self.workshop_stack.add_titled(page, "search", tr("Buscar"))
+        self.workshop_stack.connect("notify::visible-child", self.on_workshop_page)
+        for box in (self.workshop_key_box, self.workshop_search_box):
+            box.set_no_show_all(True)
+        self.refresh_workshop_search_state()
+
+    def refresh_workshop_search_state(self):
+        has_key = bool(self.preferences.data["steam_api_key"])
+        for box, visible in (
+            (self.workshop_key_box, not has_key),
+            (self.workshop_search_box, has_key),
+        ):
+            box.set_no_show_all(False)
+            if visible:
+                box.show_all()
+            box.set_visible(visible)
+            box.set_no_show_all(True)
+        if not has_key:
+            self.workshop_status.set_text("")
+
+    def on_workshop_page(self, stack, _param):
+        if (
+            stack.get_visible_child_name() == "search"
+            and self.preferences.data["steam_api_key"]
+            and not self.workshop_seen
+            and not self.workshop_results.get_children()
+        ):
+            self.reload_workshop_search()
+
+    def on_save_steam_key(self, *_args):
+        key = self.workshop_key_entry.get_text().strip()
+        if not re.fullmatch(r"[0-9A-Fa-f]{32}", key):
+            self.workshop_status.set_text(
+                tr("La clave debe tener 32 caracteres hexadecimales.")
+            )
+            return
+        self.preferences.data["steam_api_key"] = key
+        self.preferences.save()
+        self.workshop_key_entry.set_text("")
+        self.refresh_workshop_search_state()
+        self.reload_workshop_search()
+
+    def on_forget_steam_key(self, *_args):
+        self.preferences.data["steam_api_key"] = ""
+        self.preferences.save()
+        self.workshop_search_generation += 1
+        self.refresh_workshop_search_state()
+
+    def reload_workshop_search(self):
+        for child in self.workshop_results.get_children():
+            self.workshop_results.remove(child)
+        self.workshop_search_generation += 1
+        self.workshop_cursor = "*"
+        self.workshop_seen = set()
+        self.load_workshop_results()
+
+    def load_workshop_results(self):
+        key = self.preferences.data["steam_api_key"]
+        if not key:
+            return
+        text = self.workshop_entry.get_text().strip()
+        cursor = self.workshop_cursor
+        generation = self.workshop_search_generation
+        mature = self.preferences.data["workshop_mature"]
+        self.workshop_more.set_sensitive(False)
+        self.workshop_status.set_text(tr("Cargando…"))
+
+        def work():
+            try:
+                items, next_cursor = workshop.search(key, text, cursor, allow_mature=mature)
+                error = None
+            except ValueError:
+                items, next_cursor, error = [], "", tr("Clave de API no válida.")
+            except Exception as exc:  # network errors are shown to the user
+                items, next_cursor, error = [], "", str(exc)
+            self.GLib.idle_add(self.show_workshop_results, items, next_cursor, error, generation)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def show_workshop_results(self, items, next_cursor, error, generation):
+        if generation != self.workshop_search_generation:
+            return False
+        self.workshop_more.set_sensitive(True)
+        if error:
+            self.workshop_status.set_text(tr("No se pudo cargar: {error}", error=error))
+            return False
+        fresh = [item for item in items if item["id"] not in self.workshop_seen]
+        for item in fresh:
+            self.workshop_seen.add(item["id"])
+            self.workshop_results.add(self.create_workshop_card(item, generation))
+        self.workshop_results.show_all()
+        self.workshop_cursor = next_cursor
+        self.workshop_more.set_visible(bool(next_cursor and fresh))
+        self.workshop_status.set_text(
+            "" if fresh else tr("No hay más resultados.")
+        )
+        return False
+
+    def create_workshop_card(self, item, generation):
+        Gtk = self.Gtk
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        card.set_border_width(4)
+        image = Gtk.Image.new_from_icon_name("video-x-generic", Gtk.IconSize.DIALOG)
+        image.set_size_request(GALLERY_THUMB_WIDTH, GALLERY_THUMB_HEIGHT)
+        card.pack_start(image, False, False, 0)
+        title = Gtk.Label(label=item["title"])
+        title.set_max_width_chars(22)
+        title.set_ellipsize(self.Pango.EllipsizeMode.END)
+        title.set_tooltip_text(item["title"])
+        card.pack_start(title, False, False, 0)
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        row.set_halign(Gtk.Align.CENTER)
+        detail = Gtk.Label(label=f"★ {item['subscriptions']:,}")
+        detail.get_style_context().add_class("dim-label")
+        row.pack_start(detail, False, False, 0)
+        button = Gtk.Button(label=tr("Abrir en Steam"))
+        button.connect("clicked", self.on_open_workshop_item, item["id"])
+        row.pack_start(button, False, False, 0)
+        card.pack_start(row, False, False, 0)
+
+        def fetch_thumb():
+            if generation != self.workshop_search_generation or not item["preview"]:
+                return
+            try:
+                data, _ = sources.fetch(item["preview"])
+            except Exception:
+                return
+            self.GLib.idle_add(self.set_workshop_image, image, data, generation)
+
+        self.thumb_pool.submit(fetch_thumb)
+        return card
+
+    def set_workshop_image(self, image, data, generation):
+        if generation != self.workshop_search_generation:
+            return False
+        try:
+            stream = self.Gio.MemoryInputStream.new_from_bytes(self.GLib.Bytes.new(data))
+            pixbuf = self.GdkPixbuf.Pixbuf.new_from_stream_at_scale(
+                stream, GALLERY_THUMB_WIDTH, GALLERY_THUMB_HEIGHT, True, None
+            )
+            image.set_from_pixbuf(pixbuf)
+        except self.GLib.Error:
+            pass
+        return False
+
+    def on_open_workshop_item(self, _button, item_id):
+        try:
+            opened = workshop.open_in_steam(item_id)
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            self.workshop_status.set_text(tr("No se pudo abrir Steam: {error}", error=error))
+            return
+        self.workshop_status.set_text(
+            tr("Pulsa «Suscribirse» en Steam; luego vuelve a «Suscritos» y pulsa Actualizar.")
+            if opened == "steam"
+            else tr("No se encontró Steam; se abrió la página en el navegador.")
+        )
 
     def choose_folder(self, *_args):
         dialog = self.Gtk.FileChooserDialog(

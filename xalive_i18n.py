@@ -8,6 +8,20 @@ from pathlib import Path
 LANGUAGES = ("auto", "es", "en")
 
 EN = {
+    "Suscritos": "Subscribed",
+    "Para buscar necesitas una clave gratuita de la API de Steam. Se guarda solo en tu equipo.": "Searching needs a free Steam API key. It is stored only on your computer.",
+    "Clave de la API de Steam": "Steam API key",
+    "Guardar": "Save",
+    "Obtener una clave": "Get a key",
+    "Buscar en el Workshop (solo video)…": "Search the Workshop (video only)…",
+    "Cambiar clave": "Change key",
+    "Cargar más": "Load more",
+    "La clave debe tener 32 caracteres hexadecimales.": "The key must be 32 hexadecimal characters.",
+    "Clave de API no válida.": "Invalid API key.",
+    "Abrir en Steam": "Open in Steam",
+    "No se pudo abrir Steam: {error}": "Could not open Steam: {error}",
+    "Pulsa «Suscribirse» en Steam; luego vuelve a «Suscritos» y pulsa Actualizar.": "Press “Subscribe” in Steam; then come back to “Subscribed” and press Refresh.",
+    "No se encontró Steam; se abrió la página en el navegador.": "Steam was not found; the page was opened in your browser.",
     "Reproducción": "Playback",
     "Escritorio": "Desktop",
     "General": "General",

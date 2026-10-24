@@ -257,8 +257,18 @@ Workshop show up in their own **Workshop** tab (separate from your Library
 folder and the downloader). Press Refresh there after subscribing to more. Xalive reads
 `steamapps/workshop/content/431960/*/project.json` from your Steam libraries
 (native and Flatpak Steam) and lists only items whose type is `video`. Scene,
-web and application wallpapers are not supported. Xalive does not download
-anything from Steam; subscribe in Steam as usual. These files belong to their
+web and application wallpapers are not supported.
+
+The **Search** sub-tab browses the Workshop (video items only; items tagged
+*Mature*/*Questionable* are hidden). It uses Steam's official Web API, so it
+needs a free API key from <https://steamcommunity.com/dev/apikey>, which you
+paste once; it is stored only in `~/.config/xalive/settings.json` (mode 600).
+**Open in Steam** launches the item page in your Steam client (native, or the
+Flatpak one if that is what you have) through `steam://` links, and falls back
+to your browser if Steam is not found. Steam offers no way to subscribe without
+the user's own click, so press *Subscribe* there; once it has downloaded, press
+Refresh in the *Subscribed* sub-tab. Xalive never asks for your Steam
+credentials and downloads nothing from Steam itself. These files belong to their
 authors, so use them only on your own computer.
 
 ## Language
