@@ -149,6 +149,20 @@ def steam_command():
     return None
 
 
+def steam_client_running():
+    """True while the desktop Steam client is open (steamcmd would log it out)."""
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            cmdline = (entry / "cmdline").read_bytes().split(b"\0")[0]
+        except OSError:
+            continue
+        if cmdline.endswith((b"/ubuntu12_32/steam", b"/ubuntu12_64/steamwebhelper")):
+            return True
+    return False
+
+
 def open_in_steam(item_id):
     """Open the item page in the Steam client (native or Flatpak); web page as fallback."""
     if not str(item_id).isdigit():

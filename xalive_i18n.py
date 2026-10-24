@@ -20,6 +20,7 @@ EN = {
     "Contraseña de Steam": "Steam password",
     "Código de Steam Guard": "Steam Guard code",
     "Solo se envía a steamcmd. Si lo marcas, se guarda solo en este equipo.": "It is only sent to steamcmd. If checked, it is stored only on this computer.",
+    "Steam está abierto: pulsa «Suscribirse» en su ventana.": "Steam is open: click “Subscribe” in its window.",
     "Recordar en este equipo": "Remember on this computer",
     "Olvidar contraseña": "Forget password",
     "Contraseña guardada": "Saved password",

@@ -2653,6 +2653,13 @@ class WallpaperApp:
         if getattr(self, "workshop_downloading", False):
             self.workshop_status.set_text(tr("Ya hay una descarga en curso."))
             return
+        if workshop.steam_client_running():
+            # steamcmd would log the open Steam client out, so subscribe through it
+            workshop.open_in_steam(item["id"])
+            self.workshop_status.set_text(
+                tr("Steam está abierto: pulsa «Suscribirse» en su ventana.")
+            )
+            return
         self.workshop_downloading = True
         self.password_tried = False
         user = self.preferences.data["steam_user"]
