@@ -1,8 +1,14 @@
 """Finds video wallpapers downloaded from the Steam Workshop of Wallpaper Engine."""
 
 import json
+import os
+import pty
 import re
+import select
 import shutil
+import tarfile
+import termios
+import io
 import subprocess
 import urllib.error
 import urllib.parse
@@ -15,6 +21,7 @@ STEAM_ROOTS = (
     "~/.steam/steam",
     "~/.local/share/Steam",
     "~/.var/app/com.valvesoftware.Steam/.local/share/Steam",
+    "~/.local/share/xalive/steam-content",
 )
 
 
@@ -158,3 +165,126 @@ def open_in_steam(item_id):
         return "steam"
     webbrowser.open(PAGE_URL.format(item_id))
     return "web"
+
+
+STEAMCMD_URL = "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz"
+STEAMCMD_DIR = Path("~/.local/share/xalive/steamcmd").expanduser()
+DOWNLOAD_DIR = Path("~/.local/share/xalive/steam-content").expanduser()
+USER_PATTERN = re.compile(r"[A-Za-z0-9_.-]{2,64}")
+ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\r")
+PROMPTS = {
+    "password:": "password",
+    "guard code:": "guard",
+    "two-factor code:": "guard",
+    "authentication code:": "guard",
+}
+
+
+class DownloadError(Exception):
+    pass
+
+
+def ensure_steamcmd(progress=lambda _text: None):
+    script = STEAMCMD_DIR / "steamcmd.sh"
+    if script.is_file():
+        return script
+    progress("steamcmd")
+    request = urllib.request.Request(STEAMCMD_URL, headers={"User-Agent": "Xalive/1.0"})
+    with urllib.request.urlopen(request, timeout=60) as response:
+        data = response.read(60_000_000)
+    STEAMCMD_DIR.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
+        for member in archive.getmembers():
+            target = (STEAMCMD_DIR / member.name).resolve()
+            if STEAMCMD_DIR.resolve() not in target.parents and target != STEAMCMD_DIR.resolve():
+                raise DownloadError("unsafe archive")
+            if not (member.isfile() or member.isdir()):
+                raise DownloadError("unsafe archive")
+        archive.extractall(STEAMCMD_DIR)
+    script.chmod(0o755)
+    return script
+
+
+def download_item(item_id, user, ask, progress):
+    """Download one Workshop item with steamcmd. Returns the item folder.
+
+    ask("password" | "guard") must return the text typed by the user, or None
+    to cancel. The password goes to steamcmd's terminal prompt only: it is never
+    written to disk or put in a command line, and steamcmd keeps its own
+    session token so later downloads usually need no password.
+    """
+    if not str(item_id).isdigit():
+        raise DownloadError("invalid item id")
+    if not USER_PATTERN.fullmatch(user or ""):
+        raise DownloadError("invalid user")
+    script = ensure_steamcmd(progress)
+    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    master, slave = pty.openpty()
+    attrs = termios.tcgetattr(slave)
+    attrs[3] &= ~termios.ECHO
+    termios.tcsetattr(slave, termios.TCSANOW, attrs)
+    process = subprocess.Popen(
+        [
+            str(script),
+            "+force_install_dir", str(DOWNLOAD_DIR),
+            "+login", user,
+            "+workshop_download_item", WALLPAPER_ENGINE_ID, str(item_id),
+            "+quit",
+        ],
+        stdin=slave,
+        stdout=slave,
+        stderr=slave,
+        start_new_session=True,
+    )
+    os.close(slave)
+    buffer = ""
+    transcript = ""
+    try:
+        while True:
+            ready, _, _ = select.select([master], [], [], 1.0)
+            if not ready:
+                if process.poll() is not None:
+                    break
+                continue
+            try:
+                chunk = os.read(master, 4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            text = ANSI.sub("", chunk.decode("utf-8", "replace"))
+            buffer += text
+            transcript = (transcript + text)[-6000:]
+            lines = [line.strip() for line in text.split("\n") if line.strip()]
+            if lines:
+                progress(lines[-1])
+            tail = buffer.lower().rstrip()
+            for prompt, kind in PROMPTS.items():
+                if tail.endswith(prompt):
+                    answer = ask(kind)
+                    if answer is None:
+                        raise DownloadError("cancelled")
+                    os.write(master, answer.encode() + b"\n")
+                    buffer = ""
+                    break
+            buffer = buffer[-300:]
+    finally:
+        if process.poll() is None:
+            process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+        os.close(master)
+    folder = DOWNLOAD_DIR / "steamapps" / "workshop" / "content" / WALLPAPER_ENGINE_ID / str(item_id)
+    if "Success. Downloaded item" in transcript and folder.is_dir():
+        return folder
+    reason = next(
+        (
+            line.strip()
+            for line in reversed(transcript.splitlines())
+            if re.search(r"ERROR|FAILED|failure|Invalid", line, re.I)
+        ),
+        "download failed",
+    )
+    raise DownloadError(reason)

@@ -265,10 +265,19 @@ needs a free API key from <https://steamcommunity.com/dev/apikey>, which you
 paste once; it is stored only in `~/.config/xalive/settings.json` (mode 600).
 **Open in Steam** launches the item page in your Steam client (native, or the
 Flatpak one if that is what you have) through `steam://` links, and falls back
-to your browser if Steam is not found. Steam offers no way to subscribe without
-the user's own click, so press *Subscribe* there; once it has downloaded, press
-Refresh in the *Subscribed* sub-tab. Xalive never asks for your Steam
-credentials and downloads nothing from Steam itself. These files belong to their
+to your browser if Steam is not found; subscribe there and press Refresh in the
+*Subscribed* sub-tab.
+
+**Direct download (optional).** Enter your Steam username in Settings → Steam
+and each result gets a **Download** button. Xalive fetches Valve's official
+`steamcmd` into `~/.local/share/xalive/steamcmd` (no root needed) and downloads
+the item to `~/.local/share/xalive/steam-content`, where the *Subscribed* tab
+picks it up. Your account must own Wallpaper Engine. Only the username is
+stored; the password (and Steam Guard code) is requested in a dialog and sent
+straight to steamcmd's own prompt, never written to disk or to a command line.
+steamcmd keeps its own login token, so later downloads usually don't ask again.
+Xalive never uploads or shares any credentials.
+These files belong to their
 authors, so use them only on your own computer.
 
 ## Language

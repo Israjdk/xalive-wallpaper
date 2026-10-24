@@ -8,6 +8,17 @@ from pathlib import Path
 LANGUAGES = ("auto", "es", "en")
 
 EN = {
+    "Para descargar wallpapers del Workshop desde Xalive. La contraseña no se guarda: se pide al descargar y steamcmd conserva solo su sesión.": "To download Workshop wallpapers from Xalive. The password is not stored: it is asked when downloading and steamcmd keeps only its own session.",
+    "Usuario de Steam": "Steam username",
+    "Usuario": "Username",
+    "Contraseña de Steam": "Steam password",
+    "Código de Steam Guard": "Steam Guard code",
+    "Solo se envía a steamcmd; Xalive no la guarda.": "It is only sent to steamcmd; Xalive does not store it.",
+    "Escribe el código de tu correo o de la app de Steam.": "Enter the code from your email or the Steam app.",
+    "Ya hay una descarga en curso.": "A download is already in progress.",
+    "Descargando: {text}": "Downloading: {text}",
+    "No se pudo descargar: {error}": "Could not download: {error}",
+    "Descargado: {title}. Ya está en «Suscritos».": "Downloaded: {title}. It is now in “Subscribed”.",
     "Contenido adulto": "Adult content",
     "Suscritos": "Subscribed",
     "Para buscar necesitas una clave gratuita de la API de Steam. Se guarda solo en tu equipo.": "Searching needs a free Steam API key. It is stored only on your computer.",

@@ -146,6 +146,7 @@ class WallpaperPreferences:
             "last_audio": False,
             "steam_api_key": "",
             "workshop_adult": True,
+            "steam_user": "",
             "monitor_modes": {},
             "monitor_videos": {},
         }
@@ -173,6 +174,11 @@ class WallpaperPreferences:
                 self.data["last_fit"] = saved["last_fit"]
             if saved.get("language") in ("auto", "es", "en"):
                 self.data["language"] = saved["language"]
+            steam_user = saved.get("steam_user")
+            if isinstance(steam_user, str) and (
+                not steam_user or workshop.USER_PATTERN.fullmatch(steam_user)
+            ):
+                self.data["steam_user"] = steam_user
             key_text = saved.get("steam_api_key")
             if isinstance(key_text, str) and re.fullmatch(r"[0-9A-Fa-f]{32}", key_text):
                 self.data["steam_api_key"] = key_text
@@ -1656,6 +1662,20 @@ class WallpaperApp:
             tr("El idioma cambia al reiniciar Xalive Wallpaper."),
         )
 
+        steam = section(
+            "Steam",
+            tr(
+                "Para descargar wallpapers del Workshop desde Xalive. La contraseña "
+                "no se guarda: se pide al descargar y steamcmd conserva solo su sesión."
+            ),
+        )
+        self.steam_user_entry = Gtk.Entry()
+        self.steam_user_entry.set_width_chars(22)
+        self.steam_user_entry.set_placeholder_text(tr("Usuario de Steam"))
+        self.steam_user_entry.set_text(preferences.data["steam_user"])
+        self.steam_user_entry.connect("changed", self.on_steam_user_changed)
+        row(steam, 0, tr("Usuario"), self.steam_user_entry)
+
         self.monitors_grid = section(tr(" Monitores ").strip())
         self.controller.on_layout_changed = self.reload_monitors
         self.reload_monitors()
@@ -2511,7 +2531,14 @@ class WallpaperApp:
         detail = Gtk.Label(label=f"★ {item['subscriptions']:,}")
         detail.get_style_context().add_class("dim-label")
         row.pack_start(detail, False, False, 0)
-        button = Gtk.Button(label=tr("Abrir en Steam"))
+        if self.preferences.data["steam_user"]:
+            download = Gtk.Button(label=tr("Descargar"))
+            download.connect("clicked", self.on_download_workshop_item, item)
+            row.pack_start(download, False, False, 0)
+            button = Gtk.Button(label="↗")
+            button.set_tooltip_text(tr("Abrir en Steam"))
+        else:
+            button = Gtk.Button(label=tr("Abrir en Steam"))
         button.connect("clicked", self.on_open_workshop_item, item["id"])
         row.pack_start(button, False, False, 0)
         card.pack_start(row, False, False, 0)
@@ -2539,6 +2566,94 @@ class WallpaperApp:
             image.set_from_pixbuf(pixbuf)
         except self.GLib.Error:
             pass
+        return False
+
+    def on_steam_user_changed(self, entry):
+        user = entry.get_text().strip()
+        if user and not workshop.USER_PATTERN.fullmatch(user):
+            entry.get_style_context().add_class("error")
+            return
+        entry.get_style_context().remove_class("error")
+        if user != self.preferences.data["steam_user"]:
+            self.preferences.data["steam_user"] = user
+            self.preferences.save()
+            if hasattr(self, "workshop_results") and self.preferences.data["steam_api_key"]:
+                self.reload_workshop_search()
+
+    def ask_steam_secret(self, kind):
+        """Called from the download thread; shows a dialog and waits for the answer."""
+        done = threading.Event()
+        answer = []
+
+        def show():
+            Gtk = self.Gtk
+            password = kind == "password"
+            dialog = Gtk.MessageDialog(
+                transient_for=self.window,
+                modal=True,
+                message_type=Gtk.MessageType.QUESTION,
+                buttons=Gtk.ButtonsType.OK_CANCEL,
+                text=tr("Contraseña de Steam") if password else tr("Código de Steam Guard"),
+            )
+            dialog.format_secondary_text(
+                tr("Solo se envía a steamcmd; Xalive no la guarda.")
+                if password
+                else tr("Escribe el código de tu correo o de la app de Steam.")
+            )
+            entry = Gtk.Entry()
+            entry.set_visibility(not password)
+            entry.set_activates_default(True)
+            dialog.set_default_response(Gtk.ResponseType.OK)
+            dialog.get_content_area().pack_start(entry, False, False, 6)
+            dialog.show_all()
+            if dialog.run() == Gtk.ResponseType.OK and entry.get_text():
+                answer.append(entry.get_text())
+            entry.set_text("")
+            dialog.destroy()
+            done.set()
+            return False
+
+        self.GLib.idle_add(show)
+        done.wait(600)
+        return answer[0] if answer else None
+
+    def on_download_workshop_item(self, button, item):
+        if getattr(self, "workshop_downloading", False):
+            self.workshop_status.set_text(tr("Ya hay una descarga en curso."))
+            return
+        self.workshop_downloading = True
+        user = self.preferences.data["steam_user"]
+        title = item["title"]
+        button.set_sensitive(False)
+
+        def progress(text):
+            self.GLib.idle_add(
+                self.workshop_status.set_text, tr("Descargando: {text}", text=text[:90])
+            )
+
+        def work():
+            try:
+                workshop.download_item(item["id"], user, self.ask_steam_secret, progress)
+                error = None
+            except workshop.DownloadError as exc:
+                error = str(exc)
+            except Exception as exc:  # network and process errors are shown to the user
+                error = str(exc)
+            self.GLib.idle_add(self.finish_workshop_download, button, title, error)
+
+        self.workshop_status.set_text(tr("Descargando: {text}", text=title))
+        threading.Thread(target=work, daemon=True).start()
+
+    def finish_workshop_download(self, button, title, error):
+        self.workshop_downloading = False
+        button.set_sensitive(True)
+        if error:
+            self.workshop_status.set_text(tr("No se pudo descargar: {error}", error=error))
+        else:
+            self.workshop_status.set_text(
+                tr("Descargado: {title}. Ya está en «Suscritos».", title=title)
+            )
+            self.reload_workshop()
         return False
 
     def on_open_workshop_item(self, _button, item_id):
