@@ -2305,6 +2305,13 @@ class WallpaperApp:
         refresh_button = Gtk.Button(label=tr("Actualizar"))
         refresh_button.connect("clicked", lambda *_: self.reload_workshop())
         row.pack_start(refresh_button, False, False, 0)
+        self.workshop_delete_button = Gtk.Button(label=tr("Eliminar"))
+        self.workshop_delete_button.set_tooltip_text(
+            tr("Borra el wallpaper seleccionado si lo descargó Xalive")
+        )
+        self.workshop_delete_button.set_sensitive(False)
+        self.workshop_delete_button.connect("clicked", self.on_delete_workshop_item)
+        row.pack_start(self.workshop_delete_button, False, False, 0)
         installed.pack_start(row, False, False, 0)
 
         scroll = Gtk.ScrolledWindow()
@@ -2313,6 +2320,7 @@ class WallpaperApp:
         self.workshop_flow = Gtk.FlowBox()
         self.workshop_flow.set_selection_mode(Gtk.SelectionMode.SINGLE)
         self.workshop_flow.set_homogeneous(True)
+        self.workshop_flow.set_valign(Gtk.Align.START)
         self.workshop_flow.set_max_children_per_line(4)
         self.workshop_flow.set_min_children_per_line(2)
         self.workshop_flow.set_row_spacing(8)
@@ -2724,6 +2732,7 @@ class WallpaperApp:
                 )
             )
         self.fill_flow("workshop", self.workshop_flow, entries)
+        self.update_delete_button()
 
     def fill_flow(self, key, flow, entries):
         for child in flow.get_children():
@@ -2814,6 +2823,52 @@ class WallpaperApp:
                 other.unselect_all()
         self.video = child.get_child().video_path
         self.update_selected_video()
+        self.update_delete_button()
+
+    def update_delete_button(self):
+        if not hasattr(self, "workshop_delete_button"):
+            return
+        selected = self.workshop_flow.get_selected_children()
+        self.workshop_delete_button.set_sensitive(
+            bool(selected)
+            and workshop.downloaded_folder(selected[0].get_child().video_path) is not None
+        )
+
+    def on_delete_workshop_item(self, *_args):
+        selected = self.workshop_flow.get_selected_children()
+        if not selected:
+            return
+        card = selected[0].get_child()
+        video = card.video_path
+        in_use = {str(self.controller.active_video)} | set(
+            self.preferences.data["monitor_videos"].values()
+        )
+        if self.controller.running and str(video) in in_use:
+            self.workshop_label.set_text(
+                tr("Ese wallpaper está en uso. Detén el fondo o cambia de video antes.")
+            )
+            return
+        dialog = self.Gtk.MessageDialog(
+            transient_for=self.window,
+            modal=True,
+            message_type=self.Gtk.MessageType.QUESTION,
+            buttons=self.Gtk.ButtonsType.OK_CANCEL,
+            text=tr("¿Eliminar este wallpaper?"),
+        )
+        dialog.format_secondary_text(tr("Se borrará de tu equipo: {name}", name=video.parent.name))
+        accepted = dialog.run() == self.Gtk.ResponseType.OK
+        dialog.destroy()
+        if not accepted:
+            return
+        try:
+            workshop.delete_downloaded(video)
+        except (OSError, ValueError) as error:
+            self.workshop_label.set_text(tr("No se pudo eliminar: {error}", error=error))
+            return
+        if self.video == video:
+            self.video = None
+            self.update_selected_video()
+        self.reload_workshop()
 
     def update_selected_video(self):
         if self.video is None:

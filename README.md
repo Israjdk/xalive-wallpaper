@@ -276,7 +276,9 @@ picks it up. Your account must own Wallpaper Engine. Only the username is
 stored; the password (and Steam Guard code) is requested in a dialog and sent
 straight to steamcmd's own prompt, never written to disk or to a command line.
 steamcmd keeps its own login token, so later downloads usually don't ask again.
-Xalive never uploads or shares any credentials.
+Xalive never uploads or shares any credentials. Items it downloaded can be removed
+with **Delete** in the *Subscribed* sub-tab (it refuses wallpapers currently in
+use, and never touches items managed by the Steam client).
 These files belong to their
 authors, so use them only on your own computer.
 

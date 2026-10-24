@@ -8,6 +8,12 @@ from pathlib import Path
 LANGUAGES = ("auto", "es", "en")
 
 EN = {
+    "Eliminar": "Delete",
+    "Borra el wallpaper seleccionado si lo descargó Xalive": "Deletes the selected wallpaper if Xalive downloaded it",
+    "Ese wallpaper está en uso. Detén el fondo o cambia de video antes.": "That wallpaper is in use. Stop the wallpaper or switch videos first.",
+    "¿Eliminar este wallpaper?": "Delete this wallpaper?",
+    "Se borrará de tu equipo: {name}": "It will be deleted from your computer: {name}",
+    "No se pudo eliminar: {error}": "Could not delete: {error}",
     "Para descargar wallpapers del Workshop desde Xalive. La contraseña no se guarda: se pide al descargar y steamcmd conserva solo su sesión.": "To download Workshop wallpapers from Xalive. The password is not stored: it is asked when downloading and steamcmd keeps only its own session.",
     "Usuario de Steam": "Steam username",
     "Usuario": "Username",

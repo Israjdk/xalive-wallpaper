@@ -288,3 +288,23 @@ def download_item(item_id, user, ask, progress):
         "download failed",
     )
     raise DownloadError(reason)
+
+
+def downloaded_folder(video):
+    """The item folder if this video was downloaded by Xalive itself, else None."""
+    content = (DOWNLOAD_DIR / "steamapps" / "workshop" / "content" / WALLPAPER_ENGINE_ID).resolve()
+    folder = Path(video).resolve().parent
+    if folder.parent == content and folder.name.isdigit():
+        return folder
+    return None
+
+
+def delete_downloaded(video):
+    """Delete an item downloaded by Xalive. Never touches Steam's own libraries."""
+    folder = downloaded_folder(video)
+    if folder is None:
+        raise ValueError("not downloaded by Xalive")
+    shutil.rmtree(folder)
+    manifest = DOWNLOAD_DIR / "steamapps" / "workshop" / f"appworkshop_{WALLPAPER_ENGINE_ID}.acf"
+    if not any(manifest.parent.glob(f"content/{WALLPAPER_ENGINE_ID}/*")):
+        manifest.unlink(missing_ok=True)
