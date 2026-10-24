@@ -85,8 +85,9 @@ result may vary there. Wayland is not supported.
    with the contents of your Desktop folder (names, icons, double click to
    open). Icons snap to a grid based on their size and their positions are
    saved. The original style is restored when the wallpaper stops. This layer
-   can be turned off in the settings.
-4. **Pausing.** Every second it looks at the topmost windows
+   can be turned off in the settings. A detailed explanation of the technique
+   is in [docs/desktop-icons.md](docs/desktop-icons.md).
+4. **Pausing.** Every 50 ms it reads (in-process, through libX11) the state of the topmost windows
    (`_NET_CLIENT_LIST_STACKING`). If one is maximized or fullscreen on the
    current workspace, mpv is paused and the CPU use drops to almost zero.
 5. **Screens.** xrandr is used to list outputs and change resolutions (with a
