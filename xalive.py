@@ -713,6 +713,11 @@ class XfceIconLayer:
         self.popup_menu(menu, event)
         return True
 
+    def take_focus(self, event):
+        # Panel menus close when focus moves elsewhere, so claim it on click.
+        self.window.set_accept_focus(True)
+        self.window.get_window().focus(event.time)
+
     def dismiss_menu(self):
         # The desktop window never takes focus, so GTK cannot grab the pointer and
         # clicks outside an open menu would otherwise leave it stuck on screen.
@@ -729,6 +734,7 @@ class XfceIconLayer:
         menu.popup_at_pointer(event)
 
     def on_background_button_press(self, _widget, event):
+        self.take_focus(event)
         if self.dismiss_menu() and event.button != 3:
             return True
         if event.button != 3 or event.type != self.Gdk.EventType.BUTTON_PRESS:
@@ -936,6 +942,7 @@ class XfceIconLayer:
         return item
 
     def on_icon_button_press(self, widget, event, path):
+        self.take_focus(event)
         if self.dismiss_menu() and event.button != 3:
             return True
         if event.button == 3:
