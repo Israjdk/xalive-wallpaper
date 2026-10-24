@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import xalive_sources as sources  # noqa: E402
 from xalive_i18n import tr  # noqa: E402
 from xalive_x11 import XProps  # noqa: E402
+import xalive_workshop as workshop  # noqa: E402
 
 
 ICON_SIZE_MIN = 24
@@ -2256,34 +2257,38 @@ class WallpaperApp:
             self.library_flow.remove(child)
         self.library_generation += 1
         folder = self.preferences.data["library_folder"]
-        if not folder or not Path(folder).is_dir():
-            self.folder_label.set_text(tr("Ninguna carpeta seleccionada"))
-            return
-        self.folder_label.set_text(folder)
-        try:
-            videos = sorted(
-                (
-                    path
-                    for path in Path(folder).iterdir()
+        entries = []
+        if folder and Path(folder).is_dir():
+            self.folder_label.set_text(folder)
+            try:
+                entries = [
+                    (path, path.stem, path.name)
+                    for path in sorted(
+                        Path(folder).iterdir(), key=lambda path: path.name.casefold()
+                    )
                     if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
-                ),
-                key=lambda path: path.name.casefold(),
-            )
-        except OSError as error:
-            self.folder_label.set_text(tr("No se pudo leer la carpeta: {error}", error=error))
-            return
+                ]
+            except OSError as error:
+                self.folder_label.set_text(tr("No se pudo leer la carpeta: {error}", error=error))
+                return
+        else:
+            self.folder_label.set_text(tr("Ninguna carpeta seleccionada"))
+        entries.extend(
+            (video, f"{title} (Workshop)", f"{title}\n{video}")
+            for title, video in workshop.workshop_videos()
+        )
         items = []
-        for video in videos:
+        for video, text, tooltip in entries:
             card = self.Gtk.Box(orientation=self.Gtk.Orientation.VERTICAL, spacing=4)
             card.set_border_width(4)
             image = self.Gtk.Image.new_from_icon_name("video-x-generic", self.Gtk.IconSize.DIALOG)
             image.set_size_request(THUMB_WIDTH, THUMB_HEIGHT)
             card.pack_start(image, False, False, 0)
-            label = self.Gtk.Label(label=video.stem)
+            label = self.Gtk.Label(label=text)
             label.set_max_width_chars(18)
             label.set_ellipsize(self.Pango.EllipsizeMode.END)
             card.pack_start(label, False, False, 0)
-            card.set_tooltip_text(video.name)
+            card.set_tooltip_text(tooltip)
             card.video_path = video
             self.library_flow.add(card)
             if video == self.video:

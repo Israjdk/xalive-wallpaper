@@ -250,6 +250,16 @@ python3 "/path/to/xalive.py" "/path/to/video.mp4"
 To stop an autostarted instance, end its `xalive.py` process from XFCE's
 session controls or a terminal.
 
+## Wallpaper Engine Workshop (video only)
+
+If you own Wallpaper Engine on Steam, video wallpapers you subscribed to in its
+Workshop show up in the Library tab, marked "(Workshop)". Xalive reads
+`steamapps/workshop/content/431960/*/project.json` from your Steam libraries
+(native and Flatpak Steam) and lists only items whose type is `video`. Scene,
+web and application wallpapers are not supported. Xalive does not download
+anything from Steam; subscribe in Steam as usual. These files belong to their
+authors, so use them only on your own computer.
+
 ## Language
 
 The interface is available in Spanish and English (`xalive_i18n.py`). By

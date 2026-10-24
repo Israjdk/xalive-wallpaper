@@ -33,7 +33,7 @@ if [ -n "$missing" ]; then
 fi
 
 mkdir -p "$APP_DIR" "$(dirname "$BIN")" "$(dirname "$MENU")"
-cp "$SRC/xalive.py" "$SRC/xalive_sources.py" "$SRC/xalive_i18n.py" "$SRC/xalive_x11.py" "$APP_DIR/"
+cp "$SRC/xalive.py" "$SRC/xalive_sources.py" "$SRC/xalive_i18n.py" "$SRC/xalive_x11.py" "$SRC/xalive_workshop.py" "$APP_DIR/"
 
 cat > "$BIN" <<EOF
 #!/bin/sh
