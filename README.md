@@ -259,8 +259,8 @@ folder and the downloader). Press Refresh there after subscribing to more. Xaliv
 (native and Flatpak Steam) and lists only items whose type is `video`. Scene,
 web and application wallpapers are not supported.
 
-The **Search** sub-tab browses the Workshop (video items only; items tagged
-*Mature*/*Questionable* are hidden). It uses Steam's official Web API, so it
+The **Search** sub-tab browses the Workshop (video items only; adult-tagged items
+are shown by default and can be hidden with the *Adult content* checkbox). It uses Steam's official Web API, so it
 needs a free API key from <https://steamcommunity.com/dev/apikey>, which you
 paste once; it is stored only in `~/.config/xalive/settings.json` (mode 600).
 **Open in Steam** launches the item page in your Steam client (native, or the

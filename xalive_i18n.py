@@ -8,6 +8,7 @@ from pathlib import Path
 LANGUAGES = ("auto", "es", "en")
 
 EN = {
+    "Contenido adulto": "Adult content",
     "Suscritos": "Subscribed",
     "Para buscar necesitas una clave gratuita de la API de Steam. Se guarda solo en tu equipo.": "Searching needs a free Steam API key. It is stored only on your computer.",
     "Clave de la API de Steam": "Steam API key",

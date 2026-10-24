@@ -26,6 +26,7 @@ import xalive_workshop as workshop  # noqa: E402
 
 ICON_SIZE_MIN = 24
 ICON_SIZE_MAX = 128
+WORKSHOP_THUMB_SIZE = 96
 THUMB_WIDTH = 144
 GALLERY_THUMB_WIDTH = 190
 GALLERY_THUMB_HEIGHT = 107
@@ -144,7 +145,7 @@ class WallpaperPreferences:
             "last_fit": "cover",
             "last_audio": False,
             "steam_api_key": "",
-            "workshop_mature": False,
+            "workshop_adult": True,
             "monitor_modes": {},
             "monitor_videos": {},
         }
@@ -175,7 +176,7 @@ class WallpaperPreferences:
             key_text = saved.get("steam_api_key")
             if isinstance(key_text, str) and re.fullmatch(r"[0-9A-Fa-f]{32}", key_text):
                 self.data["steam_api_key"] = key_text
-            for key in ("restore_last", "last_audio", "show_icons", "workshop_mature"):
+            for key in ("restore_last", "last_audio", "show_icons", "workshop_adult"):
                 if isinstance(saved.get(key), bool):
                     self.data[key] = saved[key]
             modes = saved.get("monitor_modes")
@@ -1488,7 +1489,7 @@ class WallpaperApp:
             self.video = last if last.is_file() else None
         self.icon_size = preferences.data["icon_size"]
         self.window = Gtk.Window(title="Xalive Wallpaper")
-        self.window.set_default_size(680, 600)
+        self.window.set_default_size(820, 700)
         self.window.set_border_width(0)
         self.window.set_position(Gtk.WindowPosition.CENTER)
         self.window.connect("delete-event", self.on_close)
@@ -1501,14 +1502,15 @@ class WallpaperApp:
         header.set_show_close_button(True)
         self.window.set_titlebar(header)
 
-        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
-        root.set_border_width(24)
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        root.set_border_width(16)
         self.window.add(root)
 
         title = Gtk.Label()
         title.set_markup(f"<big><b>{tr('Tu escritorio, en movimiento')}</b></big>")
         title.set_xalign(0)
         root.pack_start(title, False, False, 0)
+        self.intro_widgets = [title]
 
         description = Gtk.Label(
             label=tr("Elige un video y ajusta cómo se verá en tus pantallas.")
@@ -1516,6 +1518,7 @@ class WallpaperApp:
         description.set_xalign(0)
         description.set_line_wrap(True)
         root.pack_start(description, False, False, 0)
+        self.intro_widgets.append(description)
 
         file_frame = Gtk.Frame(label=tr(" Video "))
         file_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
@@ -1692,7 +1695,7 @@ class WallpaperApp:
             tr("Arrastra los iconos para moverlos por la cuadrícula; "
             "tamaño y posiciones se guardan.")
         )
-        root.pack_start(self.status, True, True, 0)
+        root.pack_start(self.status, False, False, 0)
 
         actions = Gtk.ButtonBox(orientation=Gtk.Orientation.HORIZONTAL)
         actions.set_layout(Gtk.ButtonBoxStyle.END)
@@ -2301,7 +2304,14 @@ class WallpaperApp:
         self.workshop_stack.add_titled(installed, "installed", tr("Suscritos"))
         self.build_workshop_search_page()
         self.notebook.insert_page(box, Gtk.Label(label=tr("Workshop")), 1)
+        self.workshop_page = box
+        self.notebook.connect("switch-page", self.on_tab_for_intro)
         self.reload_workshop()
+
+    def on_tab_for_intro(self, _notebook, page, _number):
+        # The Workshop browser needs the room more than the intro text does.
+        for widget in self.intro_widgets:
+            widget.set_visible(page is not self.workshop_page)
 
     def build_workshop_search_page(self):
         Gtk = self.Gtk
@@ -2344,6 +2354,10 @@ class WallpaperApp:
         search_button = Gtk.Button(label=tr("Buscar"))
         search_button.connect("clicked", lambda *_: self.reload_workshop_search())
         bar.pack_start(search_button, False, False, 0)
+        adult_check = Gtk.CheckButton(label=tr("Contenido adulto"))
+        adult_check.set_active(self.preferences.data["workshop_adult"])
+        adult_check.connect("toggled", self.on_workshop_adult_toggled)
+        bar.pack_start(adult_check, False, False, 0)
         forget_button = Gtk.Button(label=tr("Cambiar clave"))
         forget_button.connect("clicked", self.on_forget_steam_key)
         bar.pack_start(forget_button, False, False, 0)
@@ -2351,11 +2365,11 @@ class WallpaperApp:
 
         scroll = Gtk.ScrolledWindow()
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scroll.set_min_content_height(170)
+        scroll.set_min_content_height(200)
         self.workshop_results = Gtk.FlowBox()
         self.workshop_results.set_selection_mode(Gtk.SelectionMode.NONE)
         self.workshop_results.set_homogeneous(True)
-        self.workshop_results.set_max_children_per_line(3)
+        self.workshop_results.set_max_children_per_line(4)
         self.workshop_results.set_min_children_per_line(2)
         self.workshop_results.set_row_spacing(8)
         self.workshop_results.set_column_spacing(8)
@@ -2363,9 +2377,7 @@ class WallpaperApp:
         self.workshop_search_box.pack_start(scroll, True, True, 0)
         self.workshop_more = Gtk.Button(label=tr("Cargar más"))
         self.workshop_more.connect("clicked", lambda *_: self.load_workshop_results())
-        self.workshop_more.set_no_show_all(True)
-        self.workshop_more.hide()
-        self.workshop_search_box.pack_start(self.workshop_more, False, False, 0)
+        scroll.connect("edge-reached", self.on_workshop_edge)
         page.pack_start(self.workshop_search_box, True, True, 0)
 
         self.workshop_status = Gtk.Label(xalign=0)
@@ -2413,6 +2425,19 @@ class WallpaperApp:
         self.refresh_workshop_search_state()
         self.reload_workshop_search()
 
+    def on_workshop_edge(self, _scroll, position):
+        if (
+            position == self.Gtk.PositionType.BOTTOM
+            and self.workshop_more.get_visible()
+            and self.workshop_more.get_sensitive()
+        ):
+            self.load_workshop_results()
+
+    def on_workshop_adult_toggled(self, button):
+        self.preferences.data["workshop_adult"] = button.get_active()
+        self.preferences.save()
+        self.reload_workshop_search()
+
     def on_forget_steam_key(self, *_args):
         self.preferences.data["steam_api_key"] = ""
         self.preferences.save()
@@ -2434,7 +2459,7 @@ class WallpaperApp:
         text = self.workshop_entry.get_text().strip()
         cursor = self.workshop_cursor
         generation = self.workshop_search_generation
-        mature = self.preferences.data["workshop_mature"]
+        mature = self.preferences.data["workshop_adult"]
         self.workshop_more.set_sensitive(False)
         self.workshop_status.set_text(tr("Cargando…"))
 
@@ -2474,10 +2499,10 @@ class WallpaperApp:
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         card.set_border_width(4)
         image = Gtk.Image.new_from_icon_name("video-x-generic", Gtk.IconSize.DIALOG)
-        image.set_size_request(GALLERY_THUMB_WIDTH, GALLERY_THUMB_HEIGHT)
+        image.set_size_request(WORKSHOP_THUMB_SIZE, WORKSHOP_THUMB_SIZE)
         card.pack_start(image, False, False, 0)
         title = Gtk.Label(label=item["title"])
-        title.set_max_width_chars(22)
+        title.set_max_width_chars(20)
         title.set_ellipsize(self.Pango.EllipsizeMode.END)
         title.set_tooltip_text(item["title"])
         card.pack_start(title, False, False, 0)
@@ -2509,7 +2534,7 @@ class WallpaperApp:
         try:
             stream = self.Gio.MemoryInputStream.new_from_bytes(self.GLib.Bytes.new(data))
             pixbuf = self.GdkPixbuf.Pixbuf.new_from_stream_at_scale(
-                stream, GALLERY_THUMB_WIDTH, GALLERY_THUMB_HEIGHT, True, None
+                stream, WORKSHOP_THUMB_SIZE, WORKSHOP_THUMB_SIZE, True, None
             )
             image.set_from_pixbuf(pixbuf)
         except self.GLib.Error:
