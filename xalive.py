@@ -1659,8 +1659,8 @@ class WallpaperApp:
         steam = section(
             "Steam",
             tr(
-                "Para descargar wallpapers del Workshop desde Xalive. La contraseña "
-                "no se guarda: se pide al descargar y steamcmd conserva solo su sesión."
+                "Para descargar wallpapers del Workshop desde Xalive. La primera vez "
+                "pide la contraseña y aprobar en el móvil; después se reutiliza la sesión."
             ),
         )
         self.steam_user_entry = Gtk.Entry()
@@ -1669,6 +1669,17 @@ class WallpaperApp:
         self.steam_user_entry.set_text(preferences.data["steam_user"])
         self.steam_user_entry.connect("changed", self.on_steam_user_changed)
         row(steam, 0, tr("Usuario"), self.steam_user_entry)
+        forget_button = Gtk.Button(label=tr("Olvidar contraseña"))
+        forget_button.set_sensitive(workshop.load_password() is not None)
+        forget_button.connect("clicked", self.on_forget_steam_password)
+        self.forget_password_button = forget_button
+        row(
+            steam,
+            1,
+            tr("Contraseña guardada"),
+            forget_button,
+            tr("Se guarda en un archivo local solo legible por ti."),
+        )
 
         self.monitors_grid = section(tr(" Monitores ").strip())
         self.controller.on_layout_changed = self.reload_monitors
@@ -2582,8 +2593,18 @@ class WallpaperApp:
             if hasattr(self, "workshop_results") and self.preferences.data["steam_api_key"]:
                 self.reload_workshop_search()
 
+    def on_forget_steam_password(self, button):
+        workshop.forget_password()
+        button.set_sensitive(False)
+
     def ask_steam_secret(self, kind):
         """Called from the download thread; shows a dialog and waits for the answer."""
+        if kind == "password" and not self.password_tried:
+            saved = workshop.load_password()
+            if saved:
+                self.password_tried = True
+                return saved
+        self.password_tried = True
         done = threading.Event()
         answer = []
 
@@ -2598,7 +2619,7 @@ class WallpaperApp:
                 text=tr("Contraseña de Steam") if password else tr("Código de Steam Guard"),
             )
             dialog.format_secondary_text(
-                tr("Solo se envía a steamcmd; Xalive no la guarda.")
+                tr("Solo se envía a steamcmd. Si lo marcas, se guarda solo en este equipo.")
                 if password
                 else tr("Escribe el código de tu correo o de la app de Steam.")
             )
@@ -2607,9 +2628,18 @@ class WallpaperApp:
             entry.set_activates_default(True)
             dialog.set_default_response(Gtk.ResponseType.OK)
             dialog.get_content_area().pack_start(entry, False, False, 6)
+            remember = Gtk.CheckButton(label=tr("Recordar en este equipo"))
+            remember.set_active(True)
+            if password:
+                dialog.get_content_area().pack_start(remember, False, False, 0)
             dialog.show_all()
             if dialog.run() == Gtk.ResponseType.OK and entry.get_text():
                 answer.append(entry.get_text())
+                if password and remember.get_active():
+                    try:
+                        workshop.save_password(entry.get_text())
+                    except OSError as error:
+                        print(f"Could not save the password: {error}", file=sys.stderr)
             entry.set_text("")
             dialog.destroy()
             done.set()
@@ -2624,6 +2654,7 @@ class WallpaperApp:
             self.workshop_status.set_text(tr("Ya hay una descarga en curso."))
             return
         self.workshop_downloading = True
+        self.password_tried = False
         user = self.preferences.data["steam_user"]
         title = item["title"]
         button.set_sensitive(False)
@@ -2655,6 +2686,7 @@ class WallpaperApp:
             self.workshop_status.set_text(
                 tr("Descargado: {title}. Ya está en «Suscritos».", title=title)
             )
+            self.forget_password_button.set_sensitive(workshop.load_password() is not None)
             self.reload_workshop()
         return False
 

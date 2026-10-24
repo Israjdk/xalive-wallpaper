@@ -170,6 +170,12 @@ def open_in_steam(item_id):
 STEAMCMD_URL = "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz"
 STEAMCMD_DIR = Path("~/.local/share/xalive/steamcmd").expanduser()
 DOWNLOAD_DIR = Path("~/.local/share/xalive/steam-content").expanduser()
+# steamcmd keeps its login under $HOME/.steam; a private HOME stops the desktop
+# Steam client from sharing (and invalidating) that session.
+STEAM_HOME = Path("~/.local/share/xalive/steamcmd-home").expanduser()
+CREDENTIALS = Path(
+    os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")
+).expanduser() / "xalive" / "steam-password"
 USER_PATTERN = re.compile(r"[A-Za-z0-9_.-]{2,64}")
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\r")
 PROMPTS = {
@@ -223,6 +229,7 @@ def download_item(item_id, user, ask, progress):
     attrs = termios.tcgetattr(slave)
     attrs[3] &= ~termios.ECHO
     termios.tcsetattr(slave, termios.TCSANOW, attrs)
+    STEAM_HOME.mkdir(parents=True, exist_ok=True)
     process = subprocess.Popen(
         [
             str(script),
@@ -235,6 +242,7 @@ def download_item(item_id, user, ask, progress):
         stdout=slave,
         stderr=slave,
         start_new_session=True,
+        env={**os.environ, "HOME": str(STEAM_HOME)},
     )
     os.close(slave)
     buffer = ""
@@ -308,3 +316,22 @@ def delete_downloaded(video):
     manifest = DOWNLOAD_DIR / "steamapps" / "workshop" / f"appworkshop_{WALLPAPER_ENGINE_ID}.acf"
     if not any(manifest.parent.glob(f"content/{WALLPAPER_ENGINE_ID}/*")):
         manifest.unlink(missing_ok=True)
+
+
+def load_password():
+    try:
+        return CREDENTIALS.read_text(encoding="utf-8").rstrip("\n") or None
+    except OSError:
+        return None
+
+
+def save_password(password):
+    """Store the password locally in a file only the user can read (mode 600)."""
+    CREDENTIALS.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(CREDENTIALS, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        handle.write(password + "\n")
+
+
+def forget_password():
+    CREDENTIALS.unlink(missing_ok=True)
