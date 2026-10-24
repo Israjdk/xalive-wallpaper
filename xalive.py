@@ -329,6 +329,7 @@ class XfceIconLayer:
         self.window = None
         self.fixed = None
         self.paths = []
+        self.active_menu = None
         self.on_stop = on_stop
         self.icon_size = icon_size
         self.icon_positions = icon_positions if icon_positions is not None else {}
@@ -709,11 +710,27 @@ class XfceIconLayer:
             lambda *_: self.launch_path(self.desktop_path),
         )
         menu.append(folder_item)
-        menu.show_all()
-        menu.popup_at_pointer(event)
+        self.popup_menu(menu, event)
         return True
 
+    def dismiss_menu(self):
+        # The desktop window never takes focus, so GTK cannot grab the pointer and
+        # clicks outside an open menu would otherwise leave it stuck on screen.
+        menu, self.active_menu = self.active_menu, None
+        if menu is not None and menu.get_visible():
+            menu.popdown()
+            return True
+        return False
+
+    def popup_menu(self, menu, event):
+        self.active_menu = menu
+        menu.connect("deactivate", lambda *_: setattr(self, "active_menu", None))
+        menu.show_all()
+        menu.popup_at_pointer(event)
+
     def on_background_button_press(self, _widget, event):
+        if self.dismiss_menu() and event.button != 3:
+            return True
         if event.button != 3 or event.type != self.Gdk.EventType.BUTTON_PRESS:
             return False
         menu = self.Gtk.Menu()
@@ -732,8 +749,7 @@ class XfceIconLayer:
         menu.append(self.Gtk.SeparatorMenuItem())
         add("Actualizar iconos", self.refresh)
         add("Abrir carpeta Escritorio", lambda: self.launch_path(self.desktop_path))
-        menu.show_all()
-        menu.popup_at_pointer(event)
+        self.popup_menu(menu, event)
         return True
 
     def spawn_tool(self, command, cwd=None):
@@ -920,6 +936,8 @@ class XfceIconLayer:
         return item
 
     def on_icon_button_press(self, widget, event, path):
+        if self.dismiss_menu() and event.button != 3:
+            return True
         if event.button == 3:
             return self.show_context_menu(path, event)
         if event.button == 1:
