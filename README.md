@@ -111,7 +111,7 @@ result may vary there. Wayland is not supported.
 
 | | Xalive Wallpaper | [Hidamari](https://github.com/jeffshee/hidamari) | [Komorebi](https://github.com/cheesecakeufo/komorebi) |
 |---|---|---|---|
-| Packaging | plain Python script, no Flatpak | Flatpak (Flathub) | distribution packages |
+| Packaging | `.deb` and Arch packages (~40 KB) or a plain script, no Flatpak | Flatpak (Flathub), unofficial AUR | `.deb` installer |
 | Display server | X11 only | X11 and GNOME Wayland | X11 |
 | Desktops tested | XFCE (Linux Mint) | several, GNOME focused | several |
 | Video backend | mpv | VLC or mpv | GStreamer |
@@ -119,14 +119,19 @@ result may vary there. Wayland is not supported.
 | Own desktop icons | yes, resizable, grid snapping (XFCE) | no | desktop widgets |
 | Per-monitor videos and resolution | yes | multi-monitor support | limited |
 | Pause when a window is maximized | yes | yes (X11) | no |
-| Built-in wallpaper downloader | yes | no | no |
-| Maintenance | hobby project, AI-assisted | actively maintained | little recent development |
+| Built-in wallpaper downloader | yes: MoeWalls, MotionBGs and Internet Archive | no (plays URLs and streams) | no |
+| Wallpaper Engine Workshop (video) | yes: reads your subscriptions, searches and downloads; finds Steam libraries on other disks | no | no |
+| Recovers from desktop crashes | yes: restarts `xfdesktop` and rebuilds its layers | not documented | not documented |
+| Maintenance | hobby project, AI-assisted | actively maintained | no commits since 2018 |
 
 The table is a summary based on each project's public description and may be
-out of date; check their pages for current details. Xalive is a much smaller
-project: it exists because I wanted something native, without Flatpak, working
-on X11 with XFCE icons. If you need Wayland, web wallpapers or a mature
-project, use Hidamari.
+out of date; check their pages for current details.
+
+Xalive is a **hobby project, built with AI assistance and open source**. It
+exists because I wanted something native, without Flatpak, working on X11 with
+XFCE icons. It is open precisely so it can improve: if something needs fixing I
+will do it myself or with help, and contributions are welcome. If you need
+Wayland, web wallpapers or a more mature project, use Hidamari or the others.
 
 ## Installation
 
