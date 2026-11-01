@@ -3054,7 +3054,11 @@ class WallpaperApp:
             buttons=self.Gtk.ButtonsType.OK_CANCEL,
             text=tr("¿Eliminar este wallpaper?"),
         )
-        dialog.format_secondary_text(tr("Se borrará de tu equipo: {name}", name=video.parent.name))
+        dialog.format_secondary_text(
+            tr("Se borrará de tu equipo: {name}", name=video.parent.name)
+            + "\n"
+            + tr("Si sigues suscrito en Steam, podría volver a descargarlo.")
+        )
         accepted = dialog.run() == self.Gtk.ResponseType.OK
         dialog.destroy()
         if not accepted:

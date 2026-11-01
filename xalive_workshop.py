@@ -365,19 +365,23 @@ def download_item(item_id, user, ask, progress):
 
 
 def downloaded_folder(video):
-    """The item folder if this video was downloaded by Xalive itself, else None."""
-    content = (DOWNLOAD_DIR / "steamapps" / "workshop" / "content" / WALLPAPER_ENGINE_ID).resolve()
+    """The Workshop item folder of this video (Xalive's own or any Steam library), else None."""
     folder = Path(video).resolve().parent
-    if folder.parent == content and folder.name.isdigit():
-        return folder
-    return None
+    if not folder.name.isdigit():
+        return None
+    contents = [DOWNLOAD_DIR.resolve() / "steamapps" / "workshop" / "content" / WALLPAPER_ENGINE_ID]
+    contents += [
+        library / "steamapps" / "workshop" / "content" / WALLPAPER_ENGINE_ID
+        for library in steam_libraries()
+    ]
+    return folder if folder.parent in contents else None
 
 
 def delete_downloaded(video):
-    """Delete an item downloaded by Xalive. Never touches Steam's own libraries."""
+    """Delete a Workshop item folder. Only folders inside a Workshop content directory qualify."""
     folder = downloaded_folder(video)
     if folder is None:
-        raise ValueError("not downloaded by Xalive")
+        raise ValueError("not a Workshop item")
     shutil.rmtree(folder)
     manifest = DOWNLOAD_DIR / "steamapps" / "workshop" / f"appworkshop_{WALLPAPER_ENGINE_ID}.acf"
     if not any(manifest.parent.glob(f"content/{WALLPAPER_ENGINE_ID}/*")):

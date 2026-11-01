@@ -13,6 +13,7 @@ EN = {
     "Ese wallpaper está en uso. Detén el fondo o cambia de video antes.": "That wallpaper is in use. Stop the wallpaper or switch videos first.",
     "¿Eliminar este wallpaper?": "Delete this wallpaper?",
     "Se borrará de tu equipo: {name}": "It will be deleted from your computer: {name}",
+    "Si sigues suscrito en Steam, podría volver a descargarlo.": "If you are still subscribed on Steam, it may download it again.",
     "No se pudo eliminar: {error}": "Could not delete: {error}",
     "Para descargar wallpapers del Workshop desde Xalive. La primera vez pide la contraseña y aprobar en el móvil; después se reutiliza la sesión.": "To download Workshop wallpapers from Xalive. The first time it asks for the password and approval on your phone; afterwards the session is reused.",
     "Usuario de Steam": "Steam username",

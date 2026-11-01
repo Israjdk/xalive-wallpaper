@@ -21,25 +21,39 @@ It uses GTK 3 to create windows stacked just above the desktop and embeds
 
 ### Demo
 
-Short clips recorded on the real desktop (no audio). The taskbar is cropped and
-the folder path is blurred. Each one also has an `.mp4` version in
-[`docs/videos`](docs/videos).
+Short clips recorded on the real desktop (no audio, some sped up).
 
-**Changing the wallpaper**:
+**Opening Xalive**: The wallpaper keeps playing and the desktop icons stay in place while the Xalive window opens.
+
+![Opening Xalive](docs/videos/abrir-xalive.gif)
+
+**Library**: Browsing the library folder and applying a video as the wallpaper.
+
+![Library](docs/videos/biblioteca.gif)
+
+**Changing the wallpaper**: Picking another video from the library and switching to it.
 
 ![Changing the wallpaper](docs/videos/cambiar-wallpaper.gif)
 
-**Downloading a wallpaper**:
+**Download sources**: Switching between the MoeWalls, MotionBGs and Internet Archive sources and loading more results.
+
+![Download sources](docs/videos/fuentes-de-descarga.gif)
+
+**Downloading a wallpaper**: Downloading a wallpaper from the Download tab with its progress bar.
 
 ![Downloading a wallpaper](docs/videos/descargar.gif)
 
-**Applying the downloaded wallpaper**:
+**Workshop: direct download**: Searching the Wallpaper Engine Workshop and downloading an item straight from Xalive with steamcmd (sped up).
 
-![Applying the downloaded wallpaper](docs/videos/wallpaper-descargado.gif)
+![Workshop: direct download](docs/videos/workshop-descarga-directa.gif)
 
-**Turning the desktop icons off and on**:
+**Workshop: subscribe in Steam**: Opening an item in the Steam client, subscribing, and seeing it appear in the Subscribed tab (sped up).
 
-![Toggling the desktop icons](docs/videos/iconos.gif)
+![Workshop: subscribe in Steam](docs/videos/workshop-suscribir-en-steam.gif)
+
+**Settings**: Playback, desktop icons and their size, language, Steam account and folders, per-monitor videos and pause exceptions (sped up).
+
+![Settings](docs/videos/ajustes.gif)
 
 The desktop icons shown are sample launchers, not real ones. The wallpapers are
 third-party artwork used only to demonstrate the app; they are not included in
@@ -79,7 +93,10 @@ result may vary there. Wayland is not supported.
    controlled through mpv's IPC socket (pause/resume).
 2. **Stacking.** The windows are placed right above the desktop window of
    `xfdesktop` (found with `wmctrl`) and below every other window, so the video
-   behaves like a wallpaper.
+   behaves like a wallpaper. Both layers are `DOCK`-type, non-resizable windows,
+   so they cover the whole screen even with the panel at the top, stay out of
+   Discord's window picker and ignore Alt+drag / Alt+click. If something raises
+   them out of order, Xalive rebuilds the layers automatically.
 3. **Icons.** `xfdesktop` would paint over the video, so Xalive switches its
    icon style off through `xfconf-query` and draws its own transparent layer
    with the contents of your Desktop folder (names, icons, double click to
@@ -256,8 +273,13 @@ If you own Wallpaper Engine on Steam, video wallpapers you subscribed to in its
 Workshop show up in their own **Workshop** tab (separate from your Library
 folder and the downloader). Press Refresh there after subscribing to more. Xalive reads
 `steamapps/workshop/content/431960/*/project.json` from your Steam libraries
-(native and Flatpak Steam) and lists only items whose type is `video`. Scene,
+(native and Flatpak Steam, plus any extra library on another disk) and lists only items whose type is `video`. Scene,
 web and application wallpapers are not supported.
+
+**Custom Steam folders.** If Steam lives on another disk, Xalive reads the
+libraries listed in Steam's `libraryfolders.vdf`, and in Settings → Steam you
+can also add or remove folders by hand (a Steam library, its `steamapps` folder
+or the `workshop/content/431960` folder itself).
 
 The **Search** sub-tab browses the Workshop (video items only; adult-tagged items
 are shown by default and can be hidden with the *Adult content* checkbox). It uses Steam's official Web API, so it
@@ -277,8 +299,8 @@ stored; the password (and Steam Guard code) is requested in a dialog and sent
 straight to steamcmd's own prompt, never written to disk or to a command line.
 steamcmd keeps its own login token, so later downloads usually don't ask again.
 Xalive never uploads or shares any credentials. Items it downloaded can be removed
-with **Delete** in the *Subscribed* sub-tab (it refuses wallpapers currently in
-use, and never touches items managed by the Steam client).
+with **Delete** in the *Subscribed* sub-tab, as can items from your Steam libraries (if you are still subscribed, Steam may download them again; it refuses wallpapers currently in
+use).
 These files belong to their
 authors, so use them only on your own computer.
 
