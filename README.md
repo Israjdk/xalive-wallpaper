@@ -128,6 +128,19 @@ project: it exists because I wanted something native, without Flatpak, working
 on X11 with XFCE icons. If you need Wayland, web wallpapers or a mature
 project, use Hidamari.
 
+## Installation
+
+Download the package for your distribution from the
+[Releases](https://github.com/Israjdk/xalive-wallpaper/releases) page:
+
+```sh
+sudo apt install ./xalive_1.0.0_all.deb          # Debian, Ubuntu, Linux Mint
+sudo pacman -U xalive-1.0.0-1-any.pkg.tar.zst    # Arch
+```
+
+Dependencies are installed automatically. Or run `./install.sh` from a clone
+(per user, no root). Packages are built with `packaging/build.sh <version>`.
+
 ## Requirements
 
 On Linux Mint, install the system packages:
