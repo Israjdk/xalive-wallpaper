@@ -13,6 +13,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 import threading
 import urllib.parse
 from pathlib import Path
@@ -147,6 +148,7 @@ class WallpaperPreferences:
             "steam_api_key": "",
             "workshop_adult": True,
             "steam_user": "",
+            "steam_folders": [],
             "monitor_modes": {},
             "monitor_videos": {},
         }
@@ -179,6 +181,11 @@ class WallpaperPreferences:
                 not steam_user or workshop.USER_PATTERN.fullmatch(steam_user)
             ):
                 self.data["steam_user"] = steam_user
+            folders = saved.get("steam_folders")
+            if isinstance(folders, list):
+                self.data["steam_folders"] = [
+                    folder for folder in folders if isinstance(folder, str) and folder
+                ]
             key_text = saved.get("steam_api_key")
             if isinstance(key_text, str) and re.fullmatch(r"[0-9A-Fa-f]{32}", key_text):
                 self.data["steam_api_key"] = key_text
@@ -299,6 +306,24 @@ def set_autostart(enabled):
     )
 
 
+def keep_layer_visible(Gdk, GLib, window, event):
+    # Docks such as Plank minimize every window of the app on click; the layers must stay up.
+    if event.changed_mask & Gdk.WindowState.ICONIFIED and event.new_window_state & Gdk.WindowState.ICONIFIED:
+        GLib.idle_add(lambda: window.deiconify() and False)
+    return False
+
+
+def detach_from_app(window):
+    # Without a PID or client leader, Bamf (used by Plank) cannot file the layer under Xalive.
+    try:
+        props = XProps()
+        xid = window.get_window().get_xid()
+        props.set_cardinal(xid, "_NET_WM_PID", 1)
+        props.delete(xid, "WM_CLIENT_LEADER")
+    except OSError:
+        pass
+
+
 class XfceIconLayer:
     style_property = "/desktop-icons/style"
 
@@ -358,11 +383,21 @@ class XfceIconLayer:
         self.debounce_id = None
         self.monitor = None
 
+    _xfdesktop_pid = None
+
     @staticmethod
     def xfdesktop_is_running():
-        proc = Path("/proc")
+        # Re-check the last known PID first; scanning all of /proc is only needed after a restart.
+        cls = XfceIconLayer
+        if cls._xfdesktop_pid is not None:
+            try:
+                if Path(f"/proc/{cls._xfdesktop_pid}/comm").read_text().strip() == "xfdesktop":
+                    return True
+            except OSError:
+                pass
+            cls._xfdesktop_pid = None
         try:
-            processes = proc.iterdir()
+            processes = list(Path("/proc").iterdir())
         except OSError:
             return False
 
@@ -371,8 +406,9 @@ class XfceIconLayer:
                 continue
             try:
                 if (process / "comm").read_text().strip() == "xfdesktop":
+                    cls._xfdesktop_pid = process.name
                     return True
-            except (FileNotFoundError, PermissionError):
+            except OSError:
                 continue
         return False
 
@@ -1028,20 +1064,27 @@ class XfceIconLayer:
 
         self.window = self.Gtk.Window(type=self.Gtk.WindowType.TOPLEVEL)
         self.window.set_title("Xalive Desktop Icons")
+        # A separate class keeps docks like Plank from grouping the layers under the launcher.
+        self.window.set_wmclass("xalive-layer", "Xalive-layer")
         self.window.set_visual(visual)
         self.window.set_app_paintable(True)
         self.window.set_decorated(False)
-        self.window.set_type_hint(self.Gdk.WindowTypeHint.NORMAL)
+        self.window.set_type_hint(self.Gdk.WindowTypeHint.DOCK)
         self.window.stick()
         self.window.set_skip_taskbar_hint(True)
         self.window.set_skip_pager_hint(True)
         self.window.set_accept_focus(False)
         self.window.set_focus_on_map(False)
         self.window.set_keep_below(True)
+        self.window.set_resizable(False)
+        self.window.connect("window-state-event", self.on_layer_state)
         self.screen_width = screen.get_width()
         self.screen_height = screen.get_height()
         self.window.set_default_size(self.screen_width, self.screen_height)
-        self.window.move(0, 0)
+        # Dock windows ignore the panel, so the icon grid is offset by the panel by hand.
+        monitor = screen.get_display().get_primary_monitor() or screen.get_display().get_monitor(0)
+        work = monitor.get_workarea()
+        self.window.move(work.x, work.y)
         self.window.connect("delete-event", self.on_delete)
         self.window.add_events(self.Gdk.EventMask.BUTTON_PRESS_MASK)
         self.window.connect("button-press-event", self.on_background_button_press)
@@ -1055,12 +1098,19 @@ class XfceIconLayer:
         self.fixed = self.Gtk.Fixed()
         self.window.add(self.fixed)
         self.refresh()
+        self.window.realize()
+        # Own group leader so docks (Plank) do not treat the layer as part of the app's windows.
+        self.window.get_window().set_group(self.window.get_window())
+        detach_from_app(self.window)
         self.window.show_all()
         self.window.get_window().restack(
             self.wallpaper_windows[-1].get_window(),
             True,
         )
         self.start_watching()
+
+    def on_layer_state(self, window, event):
+        return keep_layer_visible(self.Gdk, self.GLib, window, event)
 
     def start_watching(self):
         # inotify wakes us only when the Desktop folder changes; the slow timer is a safety net.
@@ -1125,6 +1175,8 @@ class WallpaperController:
         self.socket_dir = None
         self.exceptions = []
         self.ignored_windows = set()
+        self.desktop_window = None
+        self.last_stack_fix = 0.0
         self.active_video = None
         self.icon_size = 48
         self.on_stopped = None
@@ -1234,18 +1286,24 @@ class WallpaperController:
                 index = len(self.windows)
                 window = self.Gtk.Window(type=self.Gtk.WindowType.TOPLEVEL)
                 window.set_title("Xalive Wallpaper Video")
+                window.set_wmclass("xalive-layer", "Xalive-layer")
                 window.set_decorated(False)
                 window.set_app_paintable(True)
-                window.set_type_hint(self.Gdk.WindowTypeHint.NORMAL)
+                window.set_type_hint(self.Gdk.WindowTypeHint.DOCK)
                 window.stick()
                 window.set_skip_taskbar_hint(True)
                 window.set_skip_pager_hint(True)
                 window.set_accept_focus(False)
                 window.set_focus_on_map(False)
                 window.set_keep_below(True)
+                window.set_resizable(False)
+                window.connect("window-state-event", self.on_layer_state)
                 window.set_default_size(geometry.width, geometry.height)
                 window.move(geometry.x, geometry.y)
                 window.connect("delete-event", self.on_wallpaper_delete)
+                window.realize()
+                window.get_window().set_group(window.get_window())
+                detach_from_app(window)
                 window.show_all()
                 window.get_window().raise_()
                 self.windows.append(window)
@@ -1304,6 +1362,7 @@ class WallpaperController:
                     on_positions_changed=preferences.save,
                 )
                 self.icon_layer.hide_native_icons()
+                self.desktop_window = desktop_window
                 for window in self.windows:
                     window.get_window().restack(desktop_window, True)
                 self.icon_layer.create_window()
@@ -1420,7 +1479,37 @@ class WallpaperController:
                     self.on_error(message)
                 return self.GLib.SOURCE_REMOVE
         self.watch_desktop()
+        self.restore_stacking()
         return self.GLib.SOURCE_CONTINUE
+
+    def on_layer_state(self, window, event):
+        return keep_layer_visible(self.Gdk, self.GLib, window, event)
+
+    def restore_stacking(self):
+        # Alt+click can raise the layers above the panel; detect desktop < video < icons breaking.
+        layer = self.icon_layer
+        if (
+            self.restarting
+            or layer is None
+            or layer.window is None
+            or self.desktop_window is None
+            or self.x11 is None
+        ):
+            return
+        chain = [self.desktop_window, *self.windows, layer.window]
+        ids = [w.get_xid() if hasattr(w, "get_xid") else w.get_window().get_xid() for w in chain]
+        stack = self.x11.get(self.x11.root, "_NET_CLIENT_LIST_STACKING")
+        if any(i not in stack for i in ids):
+            return
+        others = [n for n, xid in enumerate(stack) if xid not in ids]
+        ours = [stack.index(i) for i in ids[1:]]
+        now = time.monotonic()
+        in_order = ours[-1] > max(ours[:-1]) and (not others or max(ours) < min(others))
+        if in_order or now - self.last_stack_fix < 15:
+            return
+        self.last_stack_fix = now
+        # xfwm4 cannot restack a raised dock window below the panel; rebuilding the layers can.
+        self.restart()
 
     def watch_desktop(self):
         if self.restarting or self.last_start is None or shutil.which("xfconf-query") is None:
@@ -1495,6 +1584,7 @@ class WallpaperApp:
             self.video = last if last.is_file() else None
         self.icon_size = preferences.data["icon_size"]
         self.window = Gtk.Window(title="Xalive Wallpaper")
+        self.window.set_icon_name("video-display")
         self.window.set_default_size(900, 620)
         self.window.set_border_width(0)
         self.window.set_position(Gtk.WindowPosition.CENTER)
@@ -1663,12 +1753,29 @@ class WallpaperApp:
                 "pide la contraseña y aprobar en el móvil; después se reutiliza la sesión."
             ),
         )
+        workshop.extra_roots[:] = [Path(folder) for folder in preferences.data["steam_folders"]]
         self.steam_user_entry = Gtk.Entry()
         self.steam_user_entry.set_width_chars(22)
         self.steam_user_entry.set_placeholder_text(tr("Usuario de Steam"))
         self.steam_user_entry.set_text(preferences.data["steam_user"])
         self.steam_user_entry.connect("changed", self.on_steam_user_changed)
         row(steam, 0, tr("Usuario"), self.steam_user_entry)
+        folders_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self.steam_folders_list = Gtk.ListBox()
+        self.steam_folders_list.set_selection_mode(Gtk.SelectionMode.NONE)
+        folders_box.pack_start(self.steam_folders_list, False, False, 0)
+        add_folder = Gtk.Button(label=tr("Añadir carpeta…"))
+        add_folder.set_halign(Gtk.Align.START)
+        add_folder.connect("clicked", self.on_add_steam_folder)
+        folders_box.pack_start(add_folder, False, False, 0)
+        row(
+            steam,
+            2,
+            tr("Carpetas de Steam"),
+            folders_box,
+            tr("Se detectan solas; añade aquí la de un disco que no aparezca."),
+        )
+        self.reload_steam_folders()
         forget_button = Gtk.Button(label=tr("Olvidar contraseña"))
         forget_button.set_sensitive(workshop.load_password() is not None)
         forget_button.connect("clicked", self.on_forget_steam_password)
@@ -2593,6 +2700,65 @@ class WallpaperApp:
             if hasattr(self, "workshop_results") and self.preferences.data["steam_api_key"]:
                 self.reload_workshop_search()
 
+    def reload_steam_folders(self):
+        Gtk = self.Gtk
+        for child in self.steam_folders_list.get_children():
+            self.steam_folders_list.remove(child)
+        for folder in self.preferences.data["steam_folders"]:
+            line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            label = Gtk.Label(label=folder, xalign=0)
+            label.set_ellipsize(self.Pango.EllipsizeMode.MIDDLE)
+            line.pack_start(label, True, True, 0)
+            remove = Gtk.Button(label=tr("Quitar"))
+            remove.connect("clicked", self.on_remove_steam_folder, folder)
+            line.pack_end(remove, False, False, 0)
+            self.steam_folders_list.add(line)
+        self.steam_folders_list.show_all()
+        workshop.extra_roots[:] = [Path(f) for f in self.preferences.data["steam_folders"]]
+
+    def on_add_steam_folder(self, _button):
+        Gtk = self.Gtk
+        dialog = Gtk.FileChooserDialog(
+            title=tr("Carpeta de Steam o de Wallpaper Engine"),
+            transient_for=self.window,
+            action=Gtk.FileChooserAction.SELECT_FOLDER,
+        )
+        dialog.add_buttons(
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_OPEN, Gtk.ResponseType.ACCEPT
+        )
+        chosen = dialog.get_filename() if dialog.run() == Gtk.ResponseType.ACCEPT else None
+        dialog.destroy()
+        if not chosen:
+            return
+        if workshop.library_root(chosen) is None:
+            warning = Gtk.MessageDialog(
+                transient_for=self.window,
+                modal=True,
+                message_type=Gtk.MessageType.WARNING,
+                buttons=Gtk.ButtonsType.OK,
+                text=tr("No se encontró «steamapps» en esa carpeta."),
+            )
+            warning.format_secondary_text(
+                tr("Elige la carpeta donde está instalado Steam o la biblioteca de Steam.")
+            )
+            warning.run()
+            warning.destroy()
+            return
+        folders = self.preferences.data["steam_folders"]
+        if chosen not in folders:
+            folders.append(chosen)
+            self.preferences.save()
+        self.reload_steam_folders()
+        self.reload_workshop()
+
+    def on_remove_steam_folder(self, _button, folder):
+        folders = self.preferences.data["steam_folders"]
+        if folder in folders:
+            folders.remove(folder)
+            self.preferences.save()
+        self.reload_steam_folders()
+        self.reload_workshop()
+
     def on_forget_steam_password(self, button):
         workshop.forget_password()
         button.set_sensitive(False)
@@ -2851,8 +3017,8 @@ class WallpaperApp:
             child = selected[0] if selected else None
         if child is None:
             return
-        for other in (self.library_flow, self.workshop_flow):
-            if other is not flow:
+        for other in (self.library_flow, getattr(self, "workshop_flow", None)):
+            if other is not None and other is not flow:
                 other.unselect_all()
         self.video = child.get_child().video_path
         self.update_selected_video()
@@ -3041,7 +3207,7 @@ class WallpaperApp:
             parts = line.split(None, 4)
             if len(parts) >= 3 and "." in parts[2]:
                 classes.add(parts[2].split(".", 1)[1])
-        for own_class in ("Live Wallpaper", "Xalive Wallpaper", "xalive.py"):
+        for own_class in ("Live Wallpaper", "Xalive Wallpaper", "xalive.py", "Xalive-layer", "xalive-layer"):
             classes.discard(own_class)
         return sorted(classes, key=str.casefold)
 

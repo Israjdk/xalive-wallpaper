@@ -25,21 +25,73 @@ STEAM_ROOTS = (
 )
 
 
+# Folders the user added by hand (set from the preferences).
+extra_roots = []
+MOUNT_PARENTS = ("/media", "/run/media", "/mnt")
+LIBRARY_NAMES = ("", "SteamLibrary", "Steam", "steam", "Games", "games")
+
+
+def library_root(path):
+    """Turn what the user picked into a Steam library root, or None.
+
+    Accepts the library folder, its steamapps folder, or the workshop folder itself.
+    """
+    path = Path(path).expanduser()
+    for candidate in (path, *path.parents)[:6]:
+        if candidate.name == "steamapps" and candidate.is_dir():
+            return candidate.parent
+        if (candidate / "steamapps").is_dir():
+            return candidate
+    return None
+
+
+def mounted_libraries():
+    """Libraries on external or secondary drives, found by their usual mount points."""
+    found = []
+    user = os.environ.get("USER", "")
+    bases = [Path(parent) for parent in ("/mnt",)]
+    for parent in ("/media", "/run/media"):
+        bases.append(Path(parent) / user)
+        bases.append(Path(parent))
+    for base in bases:
+        try:
+            drives = [entry for entry in base.iterdir() if entry.is_dir()]
+        except OSError:
+            continue
+        for drive in drives:
+            for name in LIBRARY_NAMES:
+                candidate = drive / name if name else drive
+                if (candidate / "steamapps").is_dir():
+                    found.append(candidate)
+    return found
+
+
 def steam_libraries():
     roots = []
     for root in STEAM_ROOTS:
         base = Path(root).expanduser()
-        if not (base / "steamapps").is_dir():
-            continue
-        roots.append(base)
+        if (base / "steamapps").is_dir():
+            roots.append(base)
+    roots.extend(mounted_libraries())
+    for folder in extra_roots:
+        root = library_root(folder)
+        if root:
+            roots.append(root)
+    for base in list(roots):
         try:
             text = (base / "steamapps" / "libraryfolders.vdf").read_text(errors="replace")
         except OSError:
             continue
-        roots.extend(Path(path) for path in re.findall(r'"path"\s+"([^"]+)"', text))
+        roots.extend(
+            Path(path) for path in re.findall(r'"path"\s+"([^"]+)"', text)
+            if (Path(path) / "steamapps").is_dir()
+        )
     unique = []
     for root in roots:
-        resolved = root.resolve()
+        try:
+            resolved = root.resolve()
+        except OSError:
+            continue
         if resolved not in unique:
             unique.append(resolved)
     return unique

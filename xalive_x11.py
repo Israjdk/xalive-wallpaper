@@ -81,3 +81,19 @@ class XProps:
                 self.x.XFree(ptr)
             self.names[value] = name
         return name
+
+    def delete(self, window, name):
+        self.x.XDeleteProperty.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong]
+        self.x.XDeleteProperty(self.display, window, self.atom(name))
+        self.x.XFlush.argtypes = [ctypes.c_void_p]
+        self.x.XFlush(self.display)
+
+    def set_cardinal(self, window, name, value):
+        self.x.XChangeProperty.argtypes = [
+            ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_int,
+            ctypes.c_int, ctypes.POINTER(ctypes.c_long), ctypes.c_int,
+        ]
+        data = (ctypes.c_long * 1)(value)
+        self.x.XChangeProperty(self.display, window, self.atom(name), 6, 32, 0, data, 1)
+        self.x.XFlush.argtypes = [ctypes.c_void_p]
+        self.x.XFlush(self.display)
