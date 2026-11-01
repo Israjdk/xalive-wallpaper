@@ -11,15 +11,7 @@ It uses GTK 3 to create windows stacked just above the desktop and embeds
 > [`xalive.py`](xalive.py) (the wallpaper catalogs are in `xalive_sources.py`),
 > and pull requests are welcome.
 
-## Screenshots
-
-![Graphical interface](docs/gui.png)
-
-![Arlecchino wallpaper with the icon layer](docs/desktop-arlecchino.png)
-
-![Train wallpaper with the icon layer](docs/desktop-train.png)
-
-### Demo
+## Demo
 
 Short clips recorded on the real desktop (no audio, some sped up).
 
