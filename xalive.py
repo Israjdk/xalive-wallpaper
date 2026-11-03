@@ -3,6 +3,7 @@
 
 import argparse
 import concurrent.futures
+import ctypes
 import hashlib
 import json
 import os
@@ -348,6 +349,14 @@ def detach_from_app(window):
         xid = window.get_window().get_xid()
         props.set_cardinal(xid, "_NET_WM_PID", 1)
         props.delete(xid, "WM_CLIENT_LEADER")
+    except OSError:
+        pass
+
+
+def die_with_parent():
+    # PR_SET_PDEATHSIG: the kernel stops mpv if Xalive dies without cleaning up (kill, crash).
+    try:
+        ctypes.CDLL("libc.so.6", use_errno=True).prctl(1, signal.SIGTERM)
     except OSError:
         pass
 
@@ -1438,7 +1447,7 @@ class WallpaperController:
             if fit == "cover":
                 command.append("--panscan=1.0")
             command.append(str(area_video))
-            self.players.append(subprocess.Popen(command))
+            self.players.append(subprocess.Popen(command, preexec_fn=die_with_parent))
 
         if not self.windows:
             raise RuntimeError(tr("No se encontraron monitores."))
