@@ -3579,7 +3579,10 @@ class WallpaperApp:
 
     def on_pick_desktop(self, button, desktop):
         menu = self.Gtk.Menu()
-        for title, page in ((tr("Biblioteca"), 0), (tr("Workshop"), 1)):
+        for title, page in (
+            (tr("Biblioteca"), self.library_page),
+            (tr("Workshop"), self.workshop_page),
+        ):
             item = self.Gtk.MenuItem(label=title)
             item.connect("activate", self.begin_pick, desktop, page)
             menu.append(item)
@@ -3588,7 +3591,7 @@ class WallpaperApp:
 
     def begin_pick(self, _item, desktop, page):
         self.pick_desktop = desktop
-        self.notebook.set_current_page(page)
+        self.notebook.set_current_page(self.notebook.page_num(page))
         self.status.set_text(
             tr("Elige el wallpaper para el escritorio {number}.", number=desktop + 1)
         )
