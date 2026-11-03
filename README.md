@@ -67,6 +67,39 @@ Without hardware decoding the load is much higher, so make sure your VAAPI
 driver works (`vainfo`). When another application is maximized, playback pauses
 and the CPU use drops to almost zero.
 
+If you want it lighter still, **Settings → Playback → FPS limit** (60, 30, 24 or
+15) drops frames before display. On a 4K 60 fps video, capping to 30 fps cut
+mpv from about 13 % to 5 % CPU in a quick test; it never raises a video's own
+frame rate. Changing it restarts the running wallpaper so it takes effect at once.
+
+## Favorites and volume
+
+In the Library and Workshop tabs every wallpaper has a star: click it to mark a
+favorite, and use the **★ Favorites** button of each tab to show only those. In Settings → Playback the
+**Volume** slider changes the sound of the running wallpaper immediately (audio
+still has to be enabled, and only the first monitor plays sound).
+
+## Smooth transition
+
+When you change wallpaper, the new one fades in over the old one (needs a
+compositor, such as xfwm4 with compositing on). It can be turned off in
+Settings → Playback.
+
+## One wallpaper per virtual desktop
+
+Enable **Virtual desktops** in Settings: each workspace remembers the wallpaper
+you applied on it and switches automatically when you change workspace.
+The same section lists every virtual desktop of your session with a **Choose**
+button: pick Library or Workshop, click a wallpaper, and you return to Settings
+with it assigned to that desktop. **Forget assignments** clears them.
+
+## Tray icon
+
+With the `gir1.2-ayatanaappindicator3-0.1` package installed, Xalive adds a
+status-area icon with: Open Xalive, Pause/Resume, Stop wallpaper and Quit. Without that package the icon is
+simply not shown. Manual pause stays on until you resume it, even if you
+close a maximized window.
+
 ## Compatibility
 
 Xalive is plain Python (GTK 3 + mpv) running on X11, so it should work on

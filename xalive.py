@@ -25,6 +25,8 @@ from xalive_x11 import XProps  # noqa: E402
 import xalive_workshop as workshop  # noqa: E402
 
 
+FPS_LIMITS = (0, 60, 30, 24, 15)
+FADE_SECONDS = 0.7
 ICON_SIZE_MIN = 24
 ICON_SIZE_MAX = 128
 WORKSHOP_THUMB_SIZE = 150
@@ -145,6 +147,14 @@ class WallpaperPreferences:
             "last_video": "",
             "last_fit": "cover",
             "last_audio": False,
+            "fps_limit": 0,
+            "volume": 100,
+            "favorites": [],
+            "favorites_only": False,
+            "workshop_favorites_only": False,
+            "transition": True,
+            "per_desktop": False,
+            "desktop_videos": {},
             "steam_api_key": "",
             "workshop_adult": True,
             "steam_user": "",
@@ -172,6 +182,24 @@ class WallpaperPreferences:
                 ]
             if isinstance(saved.get("last_video"), str):
                 self.data["last_video"] = saved["last_video"]
+            desktop_videos = saved.get("desktop_videos")
+            if isinstance(desktop_videos, dict):
+                self.data["desktop_videos"] = {
+                    index: path
+                    for index, path in desktop_videos.items()
+                    if isinstance(index, str) and index.isdigit() and isinstance(path, str) and path
+                }
+            volume = saved.get("volume")
+            if isinstance(volume, int) and not isinstance(volume, bool) and 0 <= volume <= 100:
+                self.data["volume"] = volume
+            favorites = saved.get("favorites")
+            if isinstance(favorites, list):
+                self.data["favorites"] = [path for path in favorites if isinstance(path, str)]
+            for key in ("favorites_only", "workshop_favorites_only", "transition", "per_desktop"):
+                if isinstance(saved.get(key), bool):
+                    self.data[key] = saved[key]
+            if saved.get("fps_limit") in FPS_LIMITS:
+                self.data["fps_limit"] = saved["fps_limit"]
             if saved.get("last_fit") in ("cover", "contain"):
                 self.data["last_fit"] = saved["last_fit"]
             if saved.get("language") in ("auto", "es", "en"):
@@ -1170,6 +1198,12 @@ class WallpaperController:
         self.activity_timer_id = None
         self.pause_on_activity = True
         self.paused = False
+        self.manual_paused = False
+        self.fade = None
+        self.fade_timer_id = None
+        self.watch_desktops = False
+        self.current_desktop_index = None
+        self.on_desktop_changed = None
         self.x11 = None
         self.sockets = []
         self.socket_dir = None
@@ -1256,92 +1290,21 @@ class WallpaperController:
         video = video.expanduser().resolve()
         if not video.is_file():
             raise RuntimeError(tr("No se encontró el video: {video}", video=video))
+        if preferences is None:
+            preferences = WallpaperPreferences()
+        if self.can_crossfade(icon_size, preferences):
+            self.crossfade(video, fit, audio, preferences)
+            return
         if self.running:
             self.stop()
         self.icon_size = icon_size
-        if preferences is None:
-            preferences = WallpaperPreferences()
 
         self.socket_dir = Path(tempfile.mkdtemp(prefix="xalive-"))
         self.pause_on_activity = preferences.data["pause_on_activity"]
         self.exceptions = preferences.data["pause_exceptions"]
+        self.watch_desktops = preferences.data["per_desktop"]
         try:
-            # Mirrored monitors share one area, so they share one player.
-            areas = {}
-            for monitor_index in range(self.display.get_n_monitors()):
-                monitor = self.display.get_monitor(monitor_index)
-                geometry = monitor.get_geometry()
-                area = (geometry.x, geometry.y, geometry.width, geometry.height)
-                areas.setdefault(area, []).append(monitor.get_model())
-            monitor_videos = preferences.data["monitor_videos"]
-            for area, names in areas.items():
-                geometry = self.Gdk.Rectangle()
-                geometry.x, geometry.y, geometry.width, geometry.height = area
-                area_video = video
-                for name in names:
-                    custom = Path(monitor_videos.get(name, "")).expanduser()
-                    if name in monitor_videos and custom.is_file():
-                        area_video = custom.resolve()
-                        break
-                index = len(self.windows)
-                window = self.Gtk.Window(type=self.Gtk.WindowType.TOPLEVEL)
-                window.set_title("Xalive Wallpaper Video")
-                window.set_wmclass("xalive-layer", "Xalive-layer")
-                window.set_decorated(False)
-                window.set_app_paintable(True)
-                window.set_type_hint(self.Gdk.WindowTypeHint.DOCK)
-                window.stick()
-                window.set_skip_taskbar_hint(True)
-                window.set_skip_pager_hint(True)
-                window.set_accept_focus(False)
-                window.set_focus_on_map(False)
-                window.set_keep_below(True)
-                window.set_resizable(False)
-                window.connect("window-state-event", self.on_layer_state)
-                window.set_default_size(geometry.width, geometry.height)
-                window.move(geometry.x, geometry.y)
-                window.connect("delete-event", self.on_wallpaper_delete)
-                window.realize()
-                window.get_window().set_group(window.get_window())
-                detach_from_app(window)
-                window.show_all()
-                window.get_window().raise_()
-                self.windows.append(window)
-
-                xwindow = window.get_window()
-                if not isinstance(xwindow, self.GdkX11.X11Window):
-                    raise RuntimeError("GTK did not create an X11 window.")
-
-                command = [
-                    self.mpv,
-                    "--no-terminal",
-                    "--force-window=yes",
-                    "--no-osc",
-                    # Hardware decoding is the difference between ~15% and >300% CPU on 4K;
-                    # "fast" trades scaler quality for lower GPU load.
-                    "--hwdec=auto-safe",
-                    "--profile=fast",
-                    "--demuxer-max-bytes=16MiB",
-                    "--demuxer-max-back-bytes=0",
-                    "--load-scripts=no",
-                    "--ytdl=no",
-                    "--sub-auto=no",
-                    "--loop-file=inf",
-                    "--no-input-default-bindings",
-                    "--no-input-cursor",
-                    "--input-ipc-server=" + str(self.socket_path(index)),
-                    "--wid=" + str(xwindow.get_xid()),
-                ]
-                # Only the first player makes sound so videos don't talk over each other.
-                if not audio or index > 0:
-                    command.append("--no-audio")
-                if fit == "cover":
-                    command.append("--panscan=1.0")
-                command.append(str(area_video))
-                self.players.append(subprocess.Popen(command))
-
-            if not self.windows:
-                raise RuntimeError(tr("No se encontraron monitores."))
+            self.build_layers(video, fit, audio, preferences)
 
             if preferences.data["show_icons"] and XfceIconLayer.available():
                 desktop_window = XfceIconLayer.find_xfdesktop_window(
@@ -1384,6 +1347,215 @@ class WallpaperController:
             self.stop()
             raise
 
+    def build_layers(self, video, fit, audio, preferences, above=None):
+        """Create one mpv layer per monitor area; with `above`, they start transparent over it."""
+        fps_limit = preferences.data["fps_limit"]
+        volume = preferences.data["volume"]
+        # Mirrored monitors share one area, so they share one player.
+        areas = {}
+        for monitor_index in range(self.display.get_n_monitors()):
+            monitor = self.display.get_monitor(monitor_index)
+            geometry = monitor.get_geometry()
+            area = (geometry.x, geometry.y, geometry.width, geometry.height)
+            areas.setdefault(area, []).append(monitor.get_model())
+        monitor_videos = preferences.data["monitor_videos"]
+        for area, names in areas.items():
+            geometry = self.Gdk.Rectangle()
+            geometry.x, geometry.y, geometry.width, geometry.height = area
+            area_video = video
+            for name in names:
+                custom = Path(monitor_videos.get(name, "")).expanduser()
+                if name in monitor_videos and custom.is_file():
+                    area_video = custom.resolve()
+                    break
+            index = len(self.windows)
+            window = self.Gtk.Window(type=self.Gtk.WindowType.TOPLEVEL)
+            window.set_title("Xalive Wallpaper Video")
+            window.set_wmclass("xalive-layer", "Xalive-layer")
+            window.set_decorated(False)
+            window.set_app_paintable(True)
+            window.set_type_hint(self.Gdk.WindowTypeHint.DOCK)
+            window.stick()
+            window.set_skip_taskbar_hint(True)
+            window.set_skip_pager_hint(True)
+            window.set_accept_focus(False)
+            window.set_focus_on_map(False)
+            window.set_keep_below(True)
+            window.set_resizable(False)
+            window.connect("window-state-event", self.on_layer_state)
+            window.set_default_size(geometry.width, geometry.height)
+            window.move(geometry.x, geometry.y)
+            window.connect("delete-event", self.on_wallpaper_delete)
+            window.realize()
+            if above is not None:
+                window.set_opacity(0.0)
+            window.get_window().set_group(window.get_window())
+            detach_from_app(window)
+            window.show_all()
+            if above is None:
+                window.get_window().raise_()
+            else:
+                icons = self.icon_layer.window if self.icon_layer is not None else None
+                if icons is not None and icons.get_window() is not None:
+                    # Just under the icon layer, over the old video: stacking stays valid.
+                    window.get_window().restack(icons.get_window(), False)
+                else:
+                    window.get_window().restack(above, True)
+            self.windows.append(window)
+
+            xwindow = window.get_window()
+            if not isinstance(xwindow, self.GdkX11.X11Window):
+                raise RuntimeError("GTK did not create an X11 window.")
+
+            command = [
+                self.mpv,
+                "--no-terminal",
+                "--force-window=yes",
+                "--no-osc",
+                # Hardware decoding is the difference between ~15% and >300% CPU on 4K;
+                # "fast" trades scaler quality for lower GPU load.
+                "--hwdec=auto-safe",
+                "--profile=fast",
+                "--demuxer-max-bytes=16MiB",
+                "--demuxer-max-back-bytes=0",
+                "--load-scripts=no",
+                "--ytdl=no",
+                "--sub-auto=no",
+                "--loop-file=inf",
+                "--no-input-default-bindings",
+                "--no-input-cursor",
+                "--input-ipc-server=" + str(self.socket_path(index)),
+                "--wid=" + str(xwindow.get_xid()),
+            ]
+            # Only the first player makes sound so videos don't talk over each other.
+            if not audio or index > 0:
+                command.append("--no-audio")
+            else:
+                command.append(f"--volume={volume}")
+            if fps_limit:
+                # Dropping frames lowers CPU/GPU load; it never raises the video's own rate.
+                command.append(f"--vf=fps={fps_limit}")
+            if fit == "cover":
+                command.append("--panscan=1.0")
+            command.append(str(area_video))
+            self.players.append(subprocess.Popen(command))
+
+        if not self.windows:
+            raise RuntimeError(tr("No se encontraron monitores."))
+
+    def can_crossfade(self, icon_size, preferences):
+        screen = self.display.get_default_screen()
+        return (
+            self.running
+            and not self.restarting
+            and preferences.data["transition"]
+            and screen.is_composited()
+            and icon_size == self.icon_size
+            and self.layout_signature() == self.layout
+            and (preferences.data["show_icons"] and XfceIconLayer.available())
+            == (self.icon_layer is not None)
+        )
+
+    def crossfade(self, video, fit, audio, preferences):
+        """Replace only the video layers: the new ones fade in over the old ones."""
+        self.finish_transition()
+        old = {
+            "windows": list(self.windows),
+            "players": list(self.players),
+            "socket_dir": self.socket_dir,
+        }
+        self.windows.clear()
+        self.players.clear()
+        self.socket_dir = Path(tempfile.mkdtemp(prefix="xalive-"))
+        self.pause_on_activity = preferences.data["pause_on_activity"]
+        self.exceptions = preferences.data["pause_exceptions"]
+        self.watch_desktops = preferences.data["per_desktop"]
+        try:
+            self.build_layers(
+                video, fit, audio, preferences, above=old["windows"][-1].get_window()
+            )
+        except (OSError, RuntimeError):
+            for player in self.players:
+                if player.poll() is None:
+                    player.terminate()
+            for window in self.windows:
+                window.destroy()
+            shutil.rmtree(self.socket_dir, ignore_errors=True)
+            self.windows[:] = old["windows"]
+            self.players[:] = old["players"]
+            self.socket_dir = old["socket_dir"]
+            raise
+        self.active_video = video
+        self.last_start = (video, fit, audio, preferences)
+        self.fade = {"old": old, "ticks": 0, "started": None}
+        self.fade_timer_id = self.GLib.timeout_add(33, self.fade_tick)
+
+    def player_ready(self, index):
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.settimeout(0.2)
+        try:
+            client.connect(str(self.socket_path(index)))
+            client.sendall(b'{"command":["get_property","time-pos"]}\n')
+            reply = json.loads(client.recv(4096).decode().split("\n")[0])
+            return reply.get("data") is not None
+        except (OSError, ValueError):
+            return False
+        finally:
+            client.close()
+
+    def fade_tick(self):
+        fade = self.fade
+        if fade is None:
+            self.fade_timer_id = None
+            return self.GLib.SOURCE_REMOVE
+        if fade["started"] is None:
+            fade["ticks"] += 1
+            # Wait (up to ~5 s) until every new player is drawing before showing it.
+            waiting = fade["ticks"] < 150 and not (
+                fade["ticks"] % 3 == 0
+                and all(self.player_ready(index) for index in range(len(self.players)))
+            )
+            if waiting:
+                return self.GLib.SOURCE_CONTINUE
+            fade["started"] = time.monotonic()
+            # The old frame stays on screen but stops costing CPU/GPU.
+            old = fade["old"]
+            self.send_property("pause", True, old["socket_dir"], len(old["players"]))
+            if self.paused:
+                self.send_property("pause", True)
+        progress = (time.monotonic() - fade["started"]) / FADE_SECONDS
+        if progress >= 1:
+            self.fade_timer_id = None
+            self.finish_transition()
+            return self.GLib.SOURCE_REMOVE
+        for window in self.windows:
+            window.set_opacity(progress)
+        return self.GLib.SOURCE_CONTINUE
+
+    def finish_transition(self):
+        fade = self.fade
+        if fade is None:
+            return
+        self.fade = None
+        if self.fade_timer_id is not None:
+            self.GLib.source_remove(self.fade_timer_id)
+            self.fade_timer_id = None
+        for window in self.windows:
+            window.set_opacity(1.0)
+        old = fade["old"]
+        for player in old["players"]:
+            if player.poll() is None:
+                player.terminate()
+        for player in old["players"]:
+            try:
+                player.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                player.kill()
+                player.wait()
+        for window in old["windows"]:
+            window.destroy()
+        shutil.rmtree(old["socket_dir"], ignore_errors=True)
+
     def socket_path(self, index):
         return self.socket_dir / f"mpv-{index}.sock"
 
@@ -1391,14 +1563,19 @@ class WallpaperController:
         if paused == self.paused:
             return
         self.paused = paused
-        payload = (
-            json.dumps({"command": ["set_property", "pause", paused]}) + "\n"
-        ).encode()
-        for index in range(len(self.players)):
+        self.send_property("pause", paused)
+
+    def set_volume(self, volume):
+        self.send_property("volume", volume)
+
+    def send_property(self, name, value, socket_dir=None, count=None):
+        payload = (json.dumps({"command": ["set_property", name, value]}) + "\n").encode()
+        socket_dir = socket_dir or self.socket_dir
+        for index in range(len(self.players) if count is None else count):
             client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             client.settimeout(0.5)
             try:
-                client.connect(str(self.socket_path(index)))
+                client.connect(str(socket_dir / f"mpv-{index}.sock"))
                 client.sendall(payload)
             except OSError as error:
                 print(f"Could not control mpv: {error}", file=sys.stderr)
@@ -1408,7 +1585,14 @@ class WallpaperController:
     def set_pause_on_activity(self, enabled):
         self.pause_on_activity = enabled
         if not enabled:
-            self.set_paused(False)
+            self.set_paused(self.manual_paused)
+
+    def set_manual_pause(self, paused):
+        self.manual_paused = paused
+        if paused or not self.pause_on_activity:
+            self.set_paused(paused)
+        else:
+            self.check_activity()
 
     def window_blocks_wallpaper(self, xid, desktop):
         # A visible fullscreen or maximized window of a non-excepted application blocks the video.
@@ -1441,10 +1625,41 @@ class WallpaperController:
         excepted = {name.casefold() for name in self.exceptions}
         return not (classes & excepted)
 
+    def current_desktop(self):
+        if self.x11 is None:
+            try:
+                self.x11 = XProps()
+            except OSError:
+                return None
+        current = self.x11.get(self.x11.root, "_NET_CURRENT_DESKTOP")
+        return current[0] if current else None
+
+    def desktop_names(self):
+        if self.current_desktop() is None:
+            return []
+        props = self.x11
+        count = props.get(props.root, "_NET_NUMBER_OF_DESKTOPS")
+        names = props.get(props.root, "_NET_DESKTOP_NAMES", "text")
+        return [
+            names[n] if n < len(names) and names[n] else ""
+            for n in range(count[0] if count else 0)
+        ]
+
+    def watch_virtual_desktop(self):
+        if not self.watch_desktops or self.on_desktop_changed is None or self.x11 is None:
+            return
+        desktop = self.current_desktop()
+        if desktop is not None and desktop != self.current_desktop_index:
+            self.current_desktop_index = desktop
+            self.on_desktop_changed(desktop)
+
     def check_activity(self):
         if not self.running:
             return self.GLib.SOURCE_REMOVE
+        self.watch_virtual_desktop()
         if not self.pause_on_activity or self.x11 is None:
+            return self.GLib.SOURCE_CONTINUE
+        if self.manual_paused:
             return self.GLib.SOURCE_CONTINUE
         props = self.x11
         windows = props.get(props.root, "_NET_CLIENT_LIST_STACKING")
@@ -1490,6 +1705,7 @@ class WallpaperController:
         layer = self.icon_layer
         if (
             self.restarting
+            or self.fade is not None
             or layer is None
             or layer.window is None
             or self.desktop_window is None
@@ -1535,6 +1751,8 @@ class WallpaperController:
             self.GLib.source_remove(self.activity_timer_id)
             self.activity_timer_id = None
         self.paused = False
+        self.manual_paused = False
+        self.finish_transition()
 
         was_running = self.running or self.icon_layer is not None
         for player in self.players:
@@ -1575,9 +1793,11 @@ class WallpaperApp:
         self.GdkPixbuf = controller.GdkPixbuf
         self.Gtk = Gtk
         self.Pango = Pango
+        self.Gdk = controller.Gdk
         self.controller = controller
         self.preferences = preferences
         self.quiet_start = False
+        self.pick_desktop = None
         self.video = initial_video
         if self.video is None and preferences.data["last_video"]:
             last = Path(preferences.data["last_video"])
@@ -1591,6 +1811,7 @@ class WallpaperApp:
         self.window.connect("delete-event", self.on_close)
         self.controller.on_stopped = self.on_stopped
         self.controller.on_error = self.show_error
+        self.controller.on_desktop_changed = self.on_desktop_changed
 
         header = Gtk.HeaderBar()
         header.set_title("Xalive Wallpaper")
@@ -1633,6 +1854,7 @@ class WallpaperApp:
         settings_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         settings_scroll.add(settings_box)
         self.build_library_tab()
+        self.settings_page = settings_scroll
         self.notebook.append_page(settings_scroll, Gtk.Label(label=tr("Ajustes")))
         self.build_browser_tab()
 
@@ -1686,12 +1908,41 @@ class WallpaperApp:
         row(playback, 0, tr("Ajuste a pantalla"), self.fit_combo)
         self.audio_switch = switch(preferences.data["last_audio"])
         row(playback, 1, tr("Reproducir audio"), self.audio_switch)
+        self.volume_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 5)
+        self.volume_scale.set_digits(0)
+        self.volume_scale.set_value(preferences.data["volume"])
+        self.volume_scale.set_size_request(200, -1)
+        self.volume_scale.connect("value-changed", self.on_volume_changed)
+        row(playback, 2, tr("Volumen"), self.volume_scale)
+        self.fps_combo = Gtk.ComboBoxText()
+        self.fps_combo.append("0", tr("Sin límite"))
+        for fps in FPS_LIMITS[1:]:
+            self.fps_combo.append(str(fps), f"{fps} FPS")
+        self.fps_combo.set_active_id(str(preferences.data["fps_limit"]))
+        self.fps_combo.connect("changed", self.on_fps_changed)
+        row(
+            playback,
+            3,
+            tr("Límite de FPS"),
+            self.fps_combo,
+            tr("Menos FPS ahorran CPU y batería."),
+        )
         self.pause_switch = switch(
             preferences.data["pause_on_activity"], self.on_pause_switch_changed
         )
+        self.transition_switch = switch(
+            preferences.data["transition"], self.on_transition_changed
+        )
         row(
             playback,
-            2,
+            5,
+            tr("Transición suave al cambiar de fondo"),
+            self.transition_switch,
+            tr("Necesita un compositor activo (el de XFCE lo es por defecto)."),
+        )
+        row(
+            playback,
+            4,
             tr("Pausar con ventanas maximizadas"),
             self.pause_switch,
             tr("También con ventanas a pantalla completa; ahorra CPU y batería."),
@@ -1724,6 +1975,29 @@ class WallpaperApp:
         row(desktop, 1, tr("Tamaño de los iconos"), size_box)
         size_box.set_sensitive(preferences.data["show_icons"])
         self.icon_size_box = size_box
+
+        virtual = section(tr("Escritorios virtuales"))
+        self.per_desktop_switch = switch(
+            preferences.data["per_desktop"], self.on_per_desktop_changed
+        )
+        row(
+            virtual,
+            0,
+            tr("Un fondo distinto por escritorio"),
+            self.per_desktop_switch,
+            tr(
+                "El fondo que apliques se asigna al escritorio actual; "
+                "al cambiar de escritorio se muestra el suyo."
+            ),
+        )
+        self.desktop_rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.desktop_rows.set_hexpand(True)
+        virtual.attach(self.desktop_rows, 0, 1, 2, 1)
+        self.desktop_clear_button = Gtk.Button(label=tr("Olvidar asignaciones"))
+        self.desktop_clear_button.set_halign(Gtk.Align.END)
+        self.desktop_clear_button.connect("clicked", self.clear_desktop_videos)
+        virtual.attach(self.desktop_clear_button, 0, 2, 2, 1)
+        self.refresh_desktop_summary()
 
         general = section(tr("General"))
         self.restore_switch = switch(
@@ -1961,7 +2235,12 @@ class WallpaperApp:
         page.pack_start(self.web_holder, True, True, 0)
         self.stack.add_titled(page, "browser", tr("Navegador"))
 
-    def on_notebook_page(self, _notebook, page, _number):
+    def on_notebook_page(self, _notebook, page, number):
+        if self.pick_desktop is not None and page is not getattr(self, "library_page", None) \
+                and page is not getattr(self, "workshop_page", None):
+            self.pick_desktop = None
+        if page is self.settings_page:
+            self.refresh_desktop_summary()
         if page is self.browser_box and not self.gallery_loaded:
             self.gallery_loaded = True
             self.reload_gallery()
@@ -2379,6 +2658,10 @@ class WallpaperApp:
         folder_button = Gtk.Button(label=tr("Elegir carpeta…"))
         folder_button.connect("clicked", self.choose_folder)
         folder_row.pack_start(folder_button, False, False, 0)
+        self.favorites_toggle = Gtk.ToggleButton(label=tr("★ Favoritos"))
+        self.favorites_toggle.set_active(self.preferences.data["favorites_only"])
+        self.favorites_toggle.connect("toggled", self.on_favorites_filter_toggled)
+        folder_row.pack_start(self.favorites_toggle, False, False, 0)
         box.pack_start(folder_row, False, False, 0)
 
         scroll = Gtk.ScrolledWindow()
@@ -2396,6 +2679,7 @@ class WallpaperApp:
         self.library_flow.connect("selected-children-changed", self.on_library_selected)
         scroll.add(self.library_flow)
         box.pack_start(scroll, True, True, 0)
+        self.library_page = box
         self.notebook.insert_page(box, Gtk.Label(label=tr("Biblioteca")), 0)
         self.generations = {"library": 0, "workshop": 0}
         self.reload_library()
@@ -2422,6 +2706,10 @@ class WallpaperApp:
         refresh_button = Gtk.Button(label=tr("Actualizar"))
         refresh_button.connect("clicked", lambda *_: self.reload_workshop())
         row.pack_start(refresh_button, False, False, 0)
+        self.workshop_favorites_toggle = Gtk.ToggleButton(label=tr("★ Favoritos"))
+        self.workshop_favorites_toggle.set_active(self.preferences.data["workshop_favorites_only"])
+        self.workshop_favorites_toggle.connect("toggled", self.on_favorites_filter_toggled)
+        row.pack_start(self.workshop_favorites_toggle, False, False, 0)
         self.workshop_delete_button = Gtk.Button(label=tr("Eliminar"))
         self.workshop_delete_button.set_tooltip_text(
             tr("Borra el wallpaper seleccionado si lo descargó Xalive")
@@ -2448,6 +2736,7 @@ class WallpaperApp:
         installed.pack_start(scroll, True, True, 0)
         self.workshop_stack.add_titled(installed, "installed", tr("Suscritos"))
         self.build_workshop_search_page()
+        self.workshop_page = box
         self.notebook.insert_page(box, Gtk.Label(label=tr("Workshop")), 1)
         self.reload_workshop()
 
@@ -2909,6 +3198,9 @@ class WallpaperApp:
                     )
                     if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
                 ]
+                if self.preferences.data["favorites_only"]:
+                    favorites = set(self.preferences.data["favorites"])
+                    entries = [entry for entry in entries if str(entry[0]) in favorites]
             except OSError as error:
                 self.folder_label.set_text(tr("No se pudo leer la carpeta: {error}", error=error))
         else:
@@ -2919,6 +3211,9 @@ class WallpaperApp:
         entries = [
             (video, title, f"{title}\n{video}") for title, video in workshop.workshop_videos()
         ]
+        if entries and self.preferences.data["workshop_favorites_only"]:
+            favorites = set(self.preferences.data["favorites"])
+            entries = [entry for entry in entries if str(entry[0]) in favorites]
         if entries:
             self.workshop_label.set_text(
                 tr("{count} wallpapers de video de Wallpaper Engine", count=len(entries))
@@ -2945,9 +3240,19 @@ class WallpaperApp:
             image.set_size_request(THUMB_WIDTH, THUMB_HEIGHT)
             card.pack_start(image, False, False, 0)
             label = self.Gtk.Label(label=text)
-            label.set_max_width_chars(18)
+            label.set_max_width_chars(16)
             label.set_ellipsize(self.Pango.EllipsizeMode.END)
-            card.pack_start(label, False, False, 0)
+            line = self.Gtk.Box(orientation=self.Gtk.Orientation.HORIZONTAL, spacing=2)
+            line.pack_start(label, True, True, 0)
+            star = self.Gtk.Button(
+                label="★" if str(video) in self.preferences.data["favorites"] else "☆"
+            )
+            star.set_relief(self.Gtk.ReliefStyle.NONE)
+            star.set_focus_on_click(False)
+            star.set_tooltip_text(tr("Favorito"))
+            star.connect("clicked", self.on_star_clicked, str(video), key)
+            line.pack_start(star, False, False, 0)
+            card.pack_start(line, False, False, 0)
             card.set_tooltip_text(tooltip)
             card.video_path = video
             flow.add(card)
@@ -2960,6 +3265,40 @@ class WallpaperApp:
             args=(items, key, self.generations[key]),
             daemon=True,
         ).start()
+
+    def on_star_clicked(self, button, video, key):
+        favorites = self.preferences.data["favorites"]
+        if video in favorites:
+            favorites.remove(video)
+        else:
+            favorites.append(video)
+        self.preferences.save()
+        if self.preferences.data[
+            "favorites_only" if key == "library" else "workshop_favorites_only"
+        ]:
+            self.GLib.idle_add(
+                self.reload_library_once if key == "library" else self.reload_workshop_once
+            )
+        else:
+            button.set_label("★" if video in favorites else "☆")
+
+    def reload_library_once(self):
+        self.reload_library()
+        return False
+
+    def reload_workshop_once(self):
+        self.reload_workshop()
+        return False
+
+    def on_favorites_filter_toggled(self, button):
+        if button is self.favorites_toggle:
+            self.preferences.data["favorites_only"] = button.get_active()
+            self.preferences.save()
+            self.reload_library()
+        else:
+            self.preferences.data["workshop_favorites_only"] = button.get_active()
+            self.preferences.save()
+            self.reload_workshop()
 
     def thumbnail_path(self, video):
         stat = video.stat()
@@ -3016,6 +3355,12 @@ class WallpaperApp:
             selected = flow.get_selected_children()
             child = selected[0] if selected else None
         if child is None:
+            return
+        if self.pick_desktop is not None:
+            video = child.get_child().video_path
+            flow.unselect_all()
+            desktop, self.pick_desktop = self.pick_desktop, None
+            self.GLib.idle_add(self.finish_pick, video, desktop)
             return
         for other in (self.library_flow, getattr(self, "workshop_flow", None)):
             if other is not None and other is not flow:
@@ -3154,7 +3499,122 @@ class WallpaperApp:
         if self.controller.running:
             self.GLib.idle_add(self.controller.restart)
 
+    def desktop_video(self, desktop):
+        if desktop is None or not self.preferences.data["per_desktop"]:
+            return None
+        path = self.preferences.data["desktop_videos"].get(str(desktop))
+        return Path(path) if path and Path(path).is_file() else None
+
+    def on_desktop_changed(self, desktop):
+        video = self.desktop_video(desktop)
+        if video is None or str(video) == str(self.controller.active_video):
+            return
+        self.GLib.idle_add(self.show_desktop_video, video, desktop)
+
+    def show_desktop_video(self, video, desktop):
+        if not self.controller.running or self.controller.current_desktop_index != desktop:
+            return False
+        try:
+            self.controller.start(
+                video,
+                self.fit_combo.get_active_id(),
+                self.audio_switch.get_active(),
+                self.icon_size,
+                self.preferences,
+            )
+        except (OSError, RuntimeError) as error:
+            self.show_error(str(error))
+            return False
+        self.video = video
+        self.update_selected_video()
+        self.status.set_text(tr("Fondo activo: {name}", name=video.name))
+        return False
+
+    def on_per_desktop_changed(self, switch, _param):
+        enabled = switch.get_active()
+        data = self.preferences.data
+        data["per_desktop"] = enabled
+        self.controller.watch_desktops = enabled
+        if enabled:
+            desktop = self.controller.current_desktop()
+            self.controller.current_desktop_index = desktop
+            active = self.controller.active_video
+            if desktop is not None and active is not None:
+                data["desktop_videos"].setdefault(str(desktop), str(active))
+        self.preferences.save()
+        self.refresh_desktop_summary()
+
+    def clear_desktop_videos(self, *_args):
+        self.preferences.data["desktop_videos"].clear()
+        self.preferences.save()
+        self.refresh_desktop_summary()
+
+    def refresh_desktop_summary(self):
+        for child in self.desktop_rows.get_children():
+            self.desktop_rows.remove(child)
+        assigned = self.preferences.data["desktop_videos"]
+        names = self.controller.desktop_names() or [""]
+        for index, name in enumerate(names):
+            line = self.Gtk.Box(spacing=8)
+            title = tr("Escritorio {number}", number=index + 1)
+            if name and name != str(index + 1):
+                title = f"{title} ({name})"
+            label = self.Gtk.Label(label=title, xalign=0)
+            label.set_hexpand(True)
+            line.pack_start(label, True, True, 0)
+            path = assigned.get(str(index))
+            current = self.Gtk.Label(
+                label=Path(path).stem if path else tr("Sin asignar"), xalign=1
+            )
+            current.set_ellipsize(self.Pango.EllipsizeMode.END)
+            current.set_max_width_chars(28)
+            current.get_style_context().add_class("dim-label")
+            line.pack_start(current, False, False, 0)
+            button = self.Gtk.Button(label=tr("Elegir"))
+            button.connect("clicked", self.on_pick_desktop, index)
+            line.pack_start(button, False, False, 0)
+            self.desktop_rows.pack_start(line, False, False, 0)
+        self.desktop_rows.show_all()
+        self.desktop_clear_button.set_sensitive(bool(assigned))
+
+    def on_pick_desktop(self, button, desktop):
+        menu = self.Gtk.Menu()
+        for title, page in ((tr("Biblioteca"), 0), (tr("Workshop"), 1)):
+            item = self.Gtk.MenuItem(label=title)
+            item.connect("activate", self.begin_pick, desktop, page)
+            menu.append(item)
+        menu.show_all()
+        menu.popup_at_widget(button, self.Gdk.Gravity.SOUTH_WEST, self.Gdk.Gravity.NORTH_WEST, None)
+
+    def begin_pick(self, _item, desktop, page):
+        self.pick_desktop = desktop
+        self.notebook.set_current_page(page)
+        self.status.set_text(
+            tr("Elige el wallpaper para el escritorio {number}.", number=desktop + 1)
+        )
+
+    def finish_pick(self, video, desktop):
+        data = self.preferences.data
+        data["desktop_videos"][str(desktop)] = str(video)
+        self.preferences.save()
+        if not self.per_desktop_switch.get_active():
+            self.per_desktop_switch.set_active(True)
+        self.refresh_desktop_summary()
+        self.notebook.set_current_page(self.notebook.page_num(self.settings_page))
+        self.status.set_text(
+            tr("Escritorio {number}: {name}", number=desktop + 1, name=video.stem)
+        )
+        if self.controller.running and self.controller.current_desktop() == desktop:
+            self.controller.current_desktop_index = desktop
+            self.show_desktop_video(video, desktop)
+        return False
+
     def apply_wallpaper(self, *_args, quiet=False):
+        if quiet:
+            assigned = self.desktop_video(self.controller.current_desktop())
+            if assigned is not None:
+                self.video = assigned
+                self.update_selected_video()
         if self.video is None:
             self.status.set_text(tr("Primero elige un video."))
             return
@@ -3179,6 +3639,11 @@ class WallpaperApp:
         data["last_video"] = str(self.video)
         data["last_fit"] = self.fit_combo.get_active_id()
         data["last_audio"] = self.audio_switch.get_active()
+        desktop = self.controller.current_desktop()
+        self.controller.current_desktop_index = desktop
+        if data["per_desktop"] and not quiet and desktop is not None:
+            data["desktop_videos"][str(desktop)] = str(self.video)
+            self.refresh_desktop_summary()
         self.preferences.save()
         self.status.set_text(tr("Fondo activo: {name}", name=self.video.name))
         self.update_running_state()
@@ -3367,6 +3832,39 @@ class WallpaperApp:
         dialog.destroy()
         return response == Gtk.ResponseType.OK
 
+    def on_transition_changed(self, switch, _param):
+        self.preferences.data["transition"] = switch.get_active()
+        self.preferences.save()
+
+    def on_volume_changed(self, scale):
+        volume = int(scale.get_value())
+        self.preferences.data["volume"] = volume
+        self.preferences.save()
+        self.controller.set_volume(volume)
+
+    def on_fps_changed(self, combo):
+        limit = int(combo.get_active_id() or 0)
+        if limit == self.preferences.data["fps_limit"]:
+            return
+        self.preferences.data["fps_limit"] = limit
+        self.preferences.save()
+        # mpv only takes the filter at launch, so a running wallpaper is restarted.
+        active = self.controller.active_video
+        if self.controller.running and active is not None:
+            try:
+                self.controller.start(
+                    Path(active),
+                    self.fit_combo.get_active_id(),
+                    self.audio_switch.get_active(),
+                    self.icon_size,
+                    self.preferences,
+                )
+            except (OSError, RuntimeError) as error:
+                self.show_error(str(error))
+                return
+            self.status.set_text(tr("Fondo activo: {name}", name=Path(active).name))
+            self.update_running_state()
+
     def on_pause_switch_changed(self, switch, _param):
         enabled = switch.get_active()
         self.preferences.data["pause_on_activity"] = enabled
@@ -3406,8 +3904,62 @@ class WallpaperApp:
         self.preferences.save()
         self.controller.set_icon_size(self.icon_size)
 
+    def build_tray(self):
+        """Optional status-area icon; silently skipped when AppIndicator is not installed."""
+        self.tray_items = {}
+        try:
+            import gi
+
+            try:
+                gi.require_version("AyatanaAppIndicator3", "0.1")
+                from gi.repository import AyatanaAppIndicator3 as AppIndicator
+            except (ImportError, ValueError):
+                gi.require_version("AppIndicator3", "0.1")
+                from gi.repository import AppIndicator3 as AppIndicator
+        except (ImportError, ValueError):
+            return
+        Gtk = self.Gtk
+        indicator = AppIndicator.Indicator.new(
+            "xalive", "video-display", AppIndicator.IndicatorCategory.APPLICATION_STATUS
+        )
+        indicator.set_status(AppIndicator.IndicatorStatus.ACTIVE)
+        indicator.set_title("Xalive")
+        menu = Gtk.Menu()
+        entries = (
+            ("open", tr("Abrir Xalive"), self.present),
+            ("pause", tr("Pausar"), self.toggle_manual_pause),
+            ("stop", tr("Detener fondo"), self.stop_wallpaper),
+            ("quit", tr("Salir"), self.quit_app),
+        )
+        for name, label, handler in entries:
+            if name == "quit":
+                menu.append(Gtk.SeparatorMenuItem())
+            item = Gtk.MenuItem(label=label)
+            item.connect("activate", handler)
+            menu.append(item)
+            self.tray_items[name] = item
+        menu.show_all()
+        indicator.set_menu(menu)
+        self.indicator = indicator
+        self.update_running_state()
+
+    def toggle_manual_pause(self, *_args):
+        if self.controller.running:
+            self.controller.set_manual_pause(not self.controller.manual_paused)
+            self.update_running_state()
+
+    def quit_app(self, *_args):
+        if self.Gtk.main_level() > 0:
+            self.Gtk.main_quit()
+
     def update_running_state(self):
         running = self.controller.running
+        if getattr(self, "tray_items", None):
+            self.tray_items["pause"].set_label(
+                tr("Reanudar") if self.controller.manual_paused else tr("Pausar")
+            )
+            for name in ("pause", "stop"):
+                self.tray_items[name].set_sensitive(running)
         self.stop_button.set_sensitive(running)
         self.apply_button.set_label(tr("Cambiar fondo") if running else tr("Aplicar fondo"))
 
@@ -3524,6 +4076,7 @@ def main():
         restore = preferences.data["restore_last"] and last is not None and last.is_file()
         background = args.background and restore
         app = WallpaperApp(Gtk, Pango, controller, preferences, background=background)
+        app.build_tray()
         if not background:
             app.window.present()
         gtk_app.connect("activate", lambda *_: app.present())

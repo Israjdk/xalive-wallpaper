@@ -48,7 +48,7 @@ Architecture: all
 Maintainer: Israjdk <noreply@github.com>
 Installed-Size: $SIZE
 Depends: python3, python3-gi, gir1.2-gtk-3.0, mpv, wmctrl, x11-xserver-utils, xfconf
-Recommends: gir1.2-webkit2-4.1
+Recommends: gir1.2-webkit2-4.1, gir1.2-ayatanaappindicator3-0.1
 Section: x11
 Priority: optional
 Homepage: https://github.com/Israjdk/xalive-wallpaper
@@ -81,6 +81,7 @@ depend = wmctrl
 depend = xorg-xrandr
 depend = xfconf
 optdepend = webkit2gtk-4.1: built-in wallpaper browser
+optdepend = libayatana-appindicator: tray icon
 EOF
 chmod 644 "$ARCH/.PKGINFO"
 (cd "$ARCH" && fakeroot tar --zstd -cf "$DIST/xalive-$VERSION-1-any.pkg.tar.zst" .PKGINFO usr)
