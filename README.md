@@ -59,8 +59,13 @@ hardware decoding. The screen was 1368x768.
 
 | Video | Format | Size | CPU (one core = 100 %) | RAM |
 |-------|--------|------|------------------------|-----|
-| Arlecchino (moewalls) | H.264, 3840x2160, 60 fps | 78 MB | 13.2 % (mpv 11.7 % + app 1.6 %) | 267 MB |
-| Train | H.264, 3840x2160, 60 fps | 65 MB | 14.0 % (mpv 12.3 % + app 1.7 %) | 258 MB |
+| Arlecchino (moewalls) | H.264, 3840x2160, 60 fps | 78 MB | 13.8 % (mpv 11.3 % + app 2.4 %) | 283 MB |
+| Train | H.264, 3840x2160, 60 fps | 65 MB | 14.1 % (mpv 11.6 % + app 2.5 %) | 278 MB |
+| Train, FPS limit 30 | H.264, 3840x2160, 60 fps | 65 MB | 9.9 % (mpv 7.5 % + app 2.4 %) | 279 MB |
+| Train, window maximized (paused) | H.264, 3840x2160, 60 fps | 65 MB | 2.0 % (mpv 0.0 % + app 2.0 %) | 265 MB |
+
+Re-measured with version 1.1 (tray icon, favorites and virtual desktops included);
+the app itself costs about 1 point more CPU than before.
 
 That is about 1.7 % of the total CPU of the machine while playing 4K at 60 fps.
 Without hardware decoding the load is much higher, so make sure your VAAPI
@@ -69,7 +74,7 @@ and the CPU use drops to almost zero.
 
 If you want it lighter still, **Settings → Playback → FPS limit** (60, 30, 24 or
 15) drops frames before display. On a 4K 60 fps video, capping to 30 fps cut
-mpv from about 13 % to 5 % CPU in a quick test; it never raises a video's own
+mpv from about 11.6 % to 7.5 % CPU in the measurement above; it never raises a video's own
 frame rate. Changing it restarts the running wallpaper so it takes effect at once.
 
 ## Favorites and volume
