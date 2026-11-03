@@ -84,11 +84,15 @@ favorite, and use the **★ Favorites** button of each tab to show only those. I
 **Volume** slider changes the sound of the running wallpaper immediately (audio
 still has to be enabled, and only the first monitor plays sound).
 
+![Favorites](docs/videos/favoritos.gif)
+
 ## Smooth transition
 
 When you change wallpaper, the new one fades in over the old one (needs a
 compositor, such as xfwm4 with compositing on). It can be turned off in
 Settings → Playback.
+
+![One wallpaper per virtual desktop, with the fade](docs/videos/escritorios-virtuales.gif)
 
 ## One wallpaper per virtual desktop
 
